@@ -1,11 +1,11 @@
 # transformer-groundup
 
-I'm using TinyStories dataset from HugginFace to go through data preparation and training a transformer from scratch - a tiny GPT for children's stories!
+Data preparation and training a transformer from scratch - a tiny GPT for children's stories!
 
 I'm using ComputeCanada's Narval cluster for all the experiments. 
 
 ## current structure plan:
-
+<!-- 
 transformer-groundup/
 ├── model/
 │   ├── __init__.py
@@ -31,4 +31,4 @@ transformer-groundup/
 ├── scripts/
 │   └── run_train.sh        # sbatch script to train on Narval
 ├── requirements.txt
-└── README.md
+└── README.md -->

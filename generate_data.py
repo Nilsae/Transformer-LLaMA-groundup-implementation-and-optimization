@@ -1,9 +1,12 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import random
-model = AutoModelForCausalLM.from_pretrained('./.hf_models/TinyStories-1M')
-tokenizer = AutoTokenizer.from_pretrained('./.hf_models/TinyStories-1M')
+import json
+model = AutoModelForCausalLM.from_pretrained('./.hf_models/gpt2-medium')
+tokenizer = AutoTokenizer.from_pretrained('./.hf_models/gpt2-medium')
 
 
+output_file = "generated_dataset_gpt2-medium.txt"
+random.seed(42)
 prompts = [
     "Max had a secret.",
     "Lily found a strange key.",
@@ -56,24 +59,34 @@ prompts = [
     "Gravity disappeared for one hour.",
     "A black hole opened under the bed."
 ]
+sampled_prompts = random.choices(prompts, k=1000)
 
-output_file = "generated_dataset.txt"
+generated_stories = []
 
-for i in range(1000):
-    n = random.randint(0, 49)
-
-    input_ids = tokenizer.encode(prompts[n], return_tensors="pt")
-
+for i, prompt in enumerate(sampled_prompts):
+    input_ids = tokenizer.encode(prompt, return_tensors="pt")
     # Generate continuation
-    output = model.generate(input_ids, max_length=1024, num_beams=1)
-
-    # Decode the generated tokens
+    output = model.generate(
+        input_ids,
+        max_length=1024,
+        do_sample=True,
+        top_k=50,
+        top_p=0.95,
+        temperature=1.0
+    )
     output_text = tokenizer.decode(output[0], skip_special_tokens=True)
+    generated_stories.append({
+        "prompt": prompt,
+        "story": output_text
+    })
 
-    # Save to file
+    if i % 100 == 0:
+        print(f"{i} stories generated...")
 
-    with open(output_file, "a", encoding="utf-8") as f:
-        f.write(output_text + "\n\n---\n\n")
+  
 
+with open("generated_dataset_gpt2-medium.jsonl", "w", encoding="utf-8") as f:
+    for entry in generated_stories:
+        f.write(json.dumps(entry) + "\n")
 
-print(f"Generated text saved to {output_file}")
+print("Generated dataset saved to generated_dataset_gpt2-medium.jsonl")
