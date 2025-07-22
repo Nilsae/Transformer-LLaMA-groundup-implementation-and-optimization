@@ -1,0 +1,22 @@
+# Ignore model downloads and weights
+.hf_models/
+
+# Ignore logs
+*.log
+logs/
+output/
+checkpoints/
+
+# Ignore Python cache and environments
+__pycache__/
+*.py[cod]
+*.ipynb_checkpoints
+venv/
+.env/
+
+# Ignore large datasets or generated files
+*.csv
+*.json
+*.tsv
+*.txt
+data/
