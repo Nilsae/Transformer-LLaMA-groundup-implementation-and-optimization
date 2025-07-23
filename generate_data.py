@@ -5,7 +5,7 @@ model = AutoModelForCausalLM.from_pretrained('./.hf_models/gpt2-medium')
 tokenizer = AutoTokenizer.from_pretrained('./.hf_models/gpt2-medium')
 
 
-output_file = "generated_dataset_gpt2-medium.txt"
+
 random.seed(42)
 prompts = [
     "Max had a secret.",
@@ -59,7 +59,7 @@ prompts = [
     "Gravity disappeared for one hour.",
     "A black hole opened under the bed."
 ]
-sampled_prompts = random.choices(prompts, k=1000)
+sampled_prompts = random.choices(prompts, k=100)
 
 generated_stories = []
 
@@ -80,8 +80,8 @@ for i, prompt in enumerate(sampled_prompts):
         "story": output_text
     })
 
-    if i % 100 == 0:
-        print(f"{i} stories generated...")
+    # if i % 100 == 0:
+    #     print(f"{i} stories generated...")
 
   
 
