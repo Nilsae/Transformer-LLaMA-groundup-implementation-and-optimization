@@ -17,6 +17,7 @@ venv/
 # Ignore large datasets or generated files
 *.csv
 *.json
+*.jsonl
 *.tsv
 *.txt
 *.pt
