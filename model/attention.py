@@ -17,9 +17,9 @@ def scaled_dot_product_attention(q, k, v, mask=None):
     scaled_scores = scores/math.sqrt(k.size(-1)) # tensor.size(dim0) gets the size of dimention dim0 of the tensor| k.size(-1) returns an int but torch.sqrt expects a tensor, so if used we should convert:  torch.sqrt(torch.tensor(k.size(-1), dtype=torch.float32))
     # math.sqrt expects int so no problem there
     # scaled_scores = scaled_scores - scaled_scores.max(dim=-1, keepdim=True).values 
-
-    if mask is not None:
-        scaled_scores = scaled_scores.masked_fill(mask == 0, -float('inf'))
+    if mask is None:
+        mask = torch.tril(torch.ones([q.size(0), q.size(1), q.size(1)]), diagonal=0) # the tokens do attend to themselves bc diagonal is also 1 (by setting diagonal = 0!)- the syntax looks confusing to me 
+    scaled_scores = scaled_scores.masked_fill(mask == 0, -float('inf'))
     attn_weights = torch.softmax(scaled_scores, dim = -1) # we apply softmax to the key dimension so that For each query, all key weights sum to 1
 
     return torch.matmul(attn_weights, v)
