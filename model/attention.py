@@ -1,4 +1,24 @@
+# Query (Q)
+# A query vector represents the current token's request for information.
+
+# It asks: “What am I looking for in other tokens?”
+
+# Key (K)
+# A key vector is associated with each token in the sequence and defines what content that token contains.
+
+# It answers: “What information do I have?”
+
+# Value (V)
+# A value vector contains the actual information or content to be passed along or combined.
+
+# It is used to compute the final output after weighting the attention scores.
+
+
+
+
+
 import torch 
+import torch.nn as nn
 import math
 # Note: tensor.transpose(dim0, dim1) swaps the two specified dimensions dim0 and dim1 of the tensor
 
@@ -24,17 +44,33 @@ def scaled_dot_product_attention(q, k, v, mask=None):
 
     return torch.matmul(attn_weights, v)
 
-# Query (Q)
-# A query vector represents the current token's request for information.
 
-# It asks: “What am I looking for in other tokens?”
 
-# Key (K)
-# A key vector is associated with each token in the sequence and defines what content that token contains.
 
-# It answers: “What information do I have?”
 
-# Value (V)
-# A value vector contains the actual information or content to be passed along or combined.
 
-# It is used to compute the final output after weighting the attention scores.
+class SingleHeadSelfAttention(nn.Module):
+    def __init__(self, embed_dim):
+        super().__init__()
+        self.q_projection_layer = nn.Linear(embed_dim, embed_dim) 
+        self.k_projection_layer = nn.Linear(embed_dim, embed_dim) 
+        self.v_projection_layer = nn.Linear(embed_dim, embed_dim) 
+        # Q, K, V projections all have the same shape (embed_dim -> embed_dim), 
+        # but we use separate nn.Linear layers so they learn different transformations.
+        # Each layer has its own parameters and gets updated independently.
+        # This ensures Q, K, and V capture different aspects of the input,
+        # even though their dimensions are the same.
+        self.embed_dim = embed_dim #typically embed_dim = input_dim
+        self.layer_norm = nn.LayerNorm(self.embed_dim)
+    def forward(self, input):
+        q = self.q_projection_layer(input)
+        k = self.k_projection_layer(input)
+        v = self.v_projection_layer(input)
+        attn_out = scaled_dot_product_attention(q, k, v)
+        assert attn_out.shape == input.shape
+        attn_out = attn_out + input #residual connection - helps with vanishing/exploding gradients
+        # residul connection also might help the stability of the learning by having the unchanged gradients (kind of like a shortcut)
+        # also attention output might discard useful raw information - just in case!
+        return self.layer_norm(attn_out) # adding LayerNorm helps with sclae consistency and speeds up learnign convergence
+        
+    
