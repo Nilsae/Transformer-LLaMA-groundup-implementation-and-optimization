@@ -36,7 +36,7 @@ class MultiHeadSelfAttention(nn.Module):
         self.embed_dim = embed_dim
         self.layer_norm = nn.LayerNorm(self.embed_dim)
         
-    def forward(self, input):
+    def forward(self, input, past_k=None, past_v=None):
         q = self.q_projection_layer(input)
         k = self.k_projection_layer(input)
         v = self.v_projection_layer(input)
@@ -47,11 +47,13 @@ class MultiHeadSelfAttention(nn.Module):
         k = k.reshape([batch_size, seq_len, self.num_heads, head_dim]).transpose(1, 2)
         v = v.reshape([batch_size, seq_len, self.num_heads, head_dim]).transpose(1, 2)
         
-        attn_out = scaled_dot_product_attention(q, k, v)
+        attn_out = scaled_dot_product_attention(q, k, v, mask = None, past_k = past_k, past_v = past_v)
         # for head in self.num_heads:  prevents GPU from parallelizing operations efficiently and introduces slow Python-level control flow.
         #     attn_out = scaled_dot_product_attention(q[:, :, head, :], k[:, :, head, :], v[:, :, head, :])
         attn_out = attn_out.transpose(1, 2).reshape([batch_size, seq_len, embed_dim])
         assert attn_out.shape == input.shape
         attn_out = self.final_projection_layer(attn_out)
-        attn_out = attn_out + input 
-        return self.layer_norm(attn_out) 
+        attn_out_and_input = attn_out + input 
+        return self.layer_norm(attn_out_and_input) ,attn_out, k, v #This is post-norm, used in older models. Most modern architectures like GPT-2/3 use pre-norm: x_norm = self.layer_norm(input)
+    
+    #detatching: not compute gradients - we can do it in inference where we are not training and we want to save memory, or when we dont want the information of the gradient of a specific variable in our trainign because it would be cheating from the labels
