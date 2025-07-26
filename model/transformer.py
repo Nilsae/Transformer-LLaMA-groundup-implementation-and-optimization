@@ -65,7 +65,45 @@ class MultiHeadSelfAttention(nn.Module):
         return attn_out, k, v #This is post-norm, used in older models. Most modern architectures like GPT-2/3 use pre-norm: x_norm = self.layer_norm(input)
     
     #detatching: not compute gradients - we can do it in inference where we are not training and we want to save memory, or when we dont want the information of the gradient of a specific variable in our trainign because it would be cheating from the labels
+
+class CrossAttention(nn.Module):
+    def __init__(self, embed_dim, num_heads, dropout_rate= 0.1):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.q_projection_layer = nn.Linear(embed_dim, embed_dim) 
+        self.k_projection_layer = nn.Linear(embed_dim, embed_dim) 
+        self.v_projection_layer = nn.Linear(embed_dim, embed_dim) 
+        self.final_projection_layer = nn.Linear(embed_dim, embed_dim) 
+        self.embed_dim = embed_dim
+        self.dropout = nn.Dropout(dropout_rate)
+    def cross_attention(self,q, k, v, past_k = None, past_v = None): 
+        if past_k is not None and past_v is not None:
+            assert past_k.shape == past_v.shape
+            k = torch.cat([past_k, k], dim = -2) # torch.cat([tensor1, tensor2, ...])
+            v = torch.cat([past_v, v], dim = -2)
+        scores = torch.matmul(q, k.transpose(-2, -1))
+        scaled_scores = scores/math.sqrt(k.size(-1)) 
+        scaled_scores = scaled_scores - scaled_scores.max(dim=-1, keepdim=True).values 
+        attn_weights = torch.softmax(scaled_scores, dim = -1) 
+        attn_weights_dropout = self.dropout(attn_weights)
+        return torch.matmul(attn_weights_dropout, v)
     
+    def forward(self, input, encoder_out, past_k=None, past_v=None):
+        q = self.q_projection_layer(input)
+        k = self.k_projection_layer(encoder_out)
+        v = self.v_projection_layer(encoder_out)
+        [batch_size, seq_len, embed_dim] = q.size() # or batch_size, seq_len, embed_dim = q.size() - they both work
+        assert embed_dim % self.num_heads == 0
+        head_dim = int(embed_dim//self.num_heads)
+        q = q.reshape([batch_size, seq_len, self.num_heads, head_dim]).transpose(1, 2)
+        k = k.reshape([batch_size, seq_len, self.num_heads, head_dim]).transpose(1, 2)
+        v = v.reshape([batch_size, seq_len, self.num_heads, head_dim]).transpose(1, 2)
+        attn_out = self.cross_attention(q, k, v, past_k = past_k, past_v = past_v)
+        attn_out = attn_out.transpose(1, 2).reshape([batch_size, seq_len, embed_dim])
+        assert attn_out.shape == input.shape
+        attn_out = self.final_projection_layer(attn_out)
+        return attn_out, k, v #This is post-norm, used in older models. Most modern architectures like GPT-2/3 use pre-norm: x_norm = self.layer_norm(input)
     
 # This FFN is position-wse, which means
 # the same FFN is applied to each token (aka position) independently
@@ -138,4 +176,10 @@ class TransformerEncoder(nn.Module):
         for i in range(self.num_layers):
             x = self.encoder_stack[i](x)
         return x
+    
+class TransformerDecoder(nn.Module):
+    def __init__():
+        super().__init__()
+    def forward():
+        
         
