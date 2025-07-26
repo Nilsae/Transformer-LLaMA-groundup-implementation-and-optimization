@@ -6,7 +6,7 @@ class LearnedPositionalEncoding(nn.Module):
         super().__init__()
         self.pos_embedding = nn.Embedding(max_seq_len, embed_dim)
     def forward(self, x): #batch_size, seq_len, embed_dim)
-        seq_len = x.size(0)
+        seq_len = x.size(1)
         positions   = torch.arange(seq_len, device= x.device)
         embed_out = self.pos_embedding(positions)
         return embed_out.unsqueeze(0) + x
