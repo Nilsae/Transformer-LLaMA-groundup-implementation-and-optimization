@@ -1,7 +1,7 @@
 import logging
 import torch
 from attention_with_KV_caching import MultiHeadSelfAttention
-from positional_encoding import sinusoidal_encoding
+from positional_encoding import SinPositionalEncoding
 import matplotlib.pyplot as plt
 # Create a logger
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ logger.addHandler(handler)
 dummy_inputs = torch.zeros(2, 128, 6) #(batch_size, seq_len, embed_dim)
 seq_len, embed_dim = 128, 6
 batch_size = 2
-pos_enc = sinusoidal_encoding(batch_size, seq_len, embed_dim)
+pos_enc = SinPositionalEncoding.sinusoidal_encoding(batch_size, seq_len, embed_dim)
 plt.figure(figsize=(10, 6))
 for dim in range(embed_dim):
     plt.plot(pos_enc[0, :, dim], label=f"dim {dim}")
