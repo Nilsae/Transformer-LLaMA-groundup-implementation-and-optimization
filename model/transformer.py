@@ -72,28 +72,31 @@ class MultiHeadSelfAttention(nn.Module):
 # not mixing the tokens unlike attention
 # each token's embedding vec is processed separately but with the shared weights
 class FeedForward(nn.Module):
-    def __init__(self, embed_dim, hidden_dim):
+    def __init__(self, embed_dim, hidden_dim, dropout_rate):
         super().__init__()
         self.MLP = nn.Sequential(
             nn.Linear(embed_dim, hidden_dim),
             nn.Gelu(), # or RELU - why?
             nn.Linear(hidden_dim, embed_dim),
         )
+        self.dropout = nn.Dropout(dropout_rate)
     def forward(self,input):
-        return self.MLP(input)
+        return self.dropout(self.MLP(input))
     
     
     
 class Transformer(nn.Module):
-    def __init__(self, embed_dim, num_heads, hidden_dim, is_autoregressive = True, dropout_rate = 0.1):
+    def __init__(self, seq_len, embed_dim, num_heads, hidden_dim, is_autoregressive = True, dropout_rate = 0.1):
         super().__init__()
+        self.pos_encoding = SinPositionalEncoding(seq_len, embed_dim)
         self.attention = MultiHeadSelfAttention(embed_dim, num_heads, is_autoregressive)
-        self.FFN = FeedForward(embed_dim, hidden_dim)
+        self.FFN = FeedForward(embed_dim, hidden_dim, dropout_rate)
         self.attention_layer_norm = nn.LayerNorm(embed_dim)
         self.FFN_layer_norm = nn.LayerNorm(embed_dim)
-        self.dropout = nn.Dropout(dropout_rate)
+        
     def forward(self, input):
-        attn_out, _, _ = self.attention(input)
+        pos_encoding_x = self.pos_encoding(input)
+        attn_out, _, _ = self.attention(pos_encoding_x)
         attn_out_added_input = attn_out + input # residula 1
         normalized_attn_out = self.attention_layer_norm(attn_out_added_input)
         FFN_out = self.FFN(normalized_attn_out)
@@ -101,7 +104,7 @@ class Transformer(nn.Module):
         normalized_FFN = self.FFN_layer_norm(FFN_out_added_input)
         transformer_out = self.dropout(normalized_FFN)
         return transformer_out
-
+ 
 ## What is GELU:
     # GELU is smoother than ReLU and captures more subtle non-linearities.
     # ReLU is simpler and used in the original paper.
@@ -113,9 +116,19 @@ class Transformer(nn.Module):
 
 
 
-
-
-
-
 # Pre-norm makes training deep Transformers more stable.
 # Post-norm was used in the original Transformer but can become unstable when stacking many layers (why newer models moved to pre-norm).
+
+
+
+
+class TransformerEncoder(nn.Module):
+    def __init__(self, num_layers = 6, seq_len = 16, embed_dim = 64, num_heads = 2, hidden_dim = 128, is_autoregressive = True, dropout_rate = 0.1):
+        super().__init__()
+        self.num_layers = num_layers
+        self.encoder_stack = nn.ModuleList([Transformer(seq_len, embed_dim, num_heads, hidden_dim, is_autoregressive, dropout_rate) for i in range(num_layers)])
+    def forward(self,x):
+        for i in range(self.num_layers):
+            x = self.encoder_stack[i](x)
+        return x
+        
