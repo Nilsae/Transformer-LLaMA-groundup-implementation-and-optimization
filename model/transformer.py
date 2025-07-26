@@ -5,23 +5,7 @@ import math
 from positional_encoding import SinPositionalEncoding, LearnedPositionalEncoding
 
 
-def scaled_dot_product_attention(q, k, v, mask=None, past_k = None, past_v = None, is_autoregressive= True): #(batch_size, seq_len_k, d_k) or (batch_size,num_heads, seq_len_k, d_k)
-    if past_k is not None and past_v is not None:
-        assert past_k.shape == past_v.shape
-        k = torch.cat([past_k, k], dim = -2) # torch.cat([tensor1, tensor2, ...])
-        v = torch.cat([past_v, v], dim = -2)
-    scores = torch.matmul(q, k.transpose(-2, -1))
-    scaled_scores = scores/math.sqrt(k.size(-1)) 
-    if is_autoregressive:
-        if mask is None: 
-            seq_len_q = scores.size(-2) # negative because num_heads might be or not be there
-            seq_len_k = scores.size(-1)
-            mask = torch.tril(torch.ones(seq_len_q, seq_len_k, device=q.device)).bool()
-            mask = mask.unsqueeze(0).unsqueeze(0)  # shape (1, 1, seq_len_q, seq_len_k) 1 -> all the batches
-        scaled_scores = scaled_scores.masked_fill(mask == 0, -float('inf'))
-    scaled_scores = scaled_scores - scaled_scores.max(dim=-1, keepdim=True).values #Prevents softmax overflow by centering scores.
-    attn_weights = torch.softmax(scaled_scores, dim = -1) 
-    return torch.matmul(attn_weights, v)
+
 
 
 # embed_dim : size of the vector used to represent each token (word, character, etc.)
@@ -29,7 +13,7 @@ def scaled_dot_product_attention(q, k, v, mask=None, past_k = None, past_v = Non
 
 
 class MultiHeadSelfAttention(nn.Module):
-    def __init__(self, embed_dim, num_heads, is_autoregressive = True):
+    def __init__(self, embed_dim, num_heads, is_autoregressive = True, dropout_rate= 0.1):
         super().__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
@@ -38,9 +22,29 @@ class MultiHeadSelfAttention(nn.Module):
         self.v_projection_layer = nn.Linear(embed_dim, embed_dim) 
         self.final_projection_layer = nn.Linear(embed_dim, embed_dim) 
         self.embed_dim = embed_dim
-        self.layer_norm = nn.LayerNorm(self.embed_dim)
+        # self.layer_norm = nn.LayerNorm(self.embed_dim) there is already attention  normalization in the transformer class
         self.is_autoregressive = is_autoregressive
-        
+        self.dropout = nn.Dropout(dropout_rate)
+    
+    def scaled_dot_product_attention(self, q, k, v, mask=None, past_k = None, past_v = None, is_autoregressive= True): #(batch_size, seq_len_k, d_k) or (batch_size,num_heads, seq_len_k, d_k)
+        if past_k is not None and past_v is not None:
+            assert past_k.shape == past_v.shape
+            k = torch.cat([past_k, k], dim = -2) # torch.cat([tensor1, tensor2, ...])
+            v = torch.cat([past_v, v], dim = -2)
+        scores = torch.matmul(q, k.transpose(-2, -1))
+        scaled_scores = scores/math.sqrt(k.size(-1)) 
+        if is_autoregressive:
+            if mask is None: 
+                seq_len_q = scores.size(-2) # negative because num_heads might be or not be there
+                seq_len_k = scores.size(-1)
+                mask = torch.tril(torch.ones(seq_len_q, seq_len_k, device=q.device)).bool()
+                mask = mask.unsqueeze(0).unsqueeze(0)  # shape (1, 1, seq_len_q, seq_len_k) 1 -> all the batches
+            scaled_scores = scaled_scores.masked_fill(mask == 0, -float('inf'))
+        scaled_scores = scaled_scores - scaled_scores.max(dim=-1, keepdim=True).values #Prevents softmax overflow by centering scores.  # not in the original transformer paper
+        attn_weights = torch.softmax(scaled_scores, dim = -1) 
+        attn_weights_dropout = self.dropout(attn_weights)
+        return torch.matmul(attn_weights_dropout, v)
+    
     def forward(self, input, past_k=None, past_v=None):
         q = self.q_projection_layer(input)
         k = self.k_projection_layer(input)
@@ -52,14 +56,13 @@ class MultiHeadSelfAttention(nn.Module):
         k = k.reshape([batch_size, seq_len, self.num_heads, head_dim]).transpose(1, 2)
         v = v.reshape([batch_size, seq_len, self.num_heads, head_dim]).transpose(1, 2)
         
-        attn_out = scaled_dot_product_attention(q, k, v, mask = None, past_k = past_k, past_v = past_v, is_autoregressive = self.is_autoregressive)
+        attn_out = self.scaled_dot_product_attention(q, k, v, mask = None, past_k = past_k, past_v = past_v, is_autoregressive = self.is_autoregressive)
         # for head in self.num_heads:  prevents GPU from parallelizing operations efficiently and introduces slow Python-level control flow.
         #     attn_out = scaled_dot_product_attention(q[:, :, head, :], k[:, :, head, :], v[:, :, head, :])
         attn_out = attn_out.transpose(1, 2).reshape([batch_size, seq_len, embed_dim])
         assert attn_out.shape == input.shape
         attn_out = self.final_projection_layer(attn_out)
-        attn_out_and_input = attn_out + input 
-        return self.layer_norm(attn_out_and_input) ,attn_out, k, v #This is post-norm, used in older models. Most modern architectures like GPT-2/3 use pre-norm: x_norm = self.layer_norm(input)
+        return attn_out, k, v #This is post-norm, used in older models. Most modern architectures like GPT-2/3 use pre-norm: x_norm = self.layer_norm(input)
     
     #detatching: not compute gradients - we can do it in inference where we are not training and we want to save memory, or when we dont want the information of the gradient of a specific variable in our trainign because it would be cheating from the labels
     
@@ -90,14 +93,29 @@ class Transformer(nn.Module):
         self.FFN_layer_norm = nn.LayerNorm(embed_dim)
         self.dropout = nn.Dropout(dropout_rate)
     def forward(self, input):
-        normalized_x = self.attention_layer_norm(input)
-        attn_out, _, _, _ = self.attention(normalized_x)
-        FFN_out = self.FFN(attn_out)
-        FFN_out_added_input = FFN_out + attn_out # attn_out already has a + input in it - so our residula conection here is with the attn_out
+        attn_out, _, _ = self.attention(input)
+        attn_out_added_input = attn_out + input # residula 1
+        normalized_attn_out = self.attention_layer_norm(attn_out_added_input)
+        FFN_out = self.FFN(normalized_attn_out)
+        FFN_out_added_input = FFN_out + normalized_attn_out # residual 2 # before we did norm in the attn class - so now the residul is to the final attn output which is the normalized one
         normalized_FFN = self.FFN_layer_norm(FFN_out_added_input)
         transformer_out = self.dropout(normalized_FFN)
         return transformer_out
 
 ## What is GELU:
-
+    # GELU is smoother than ReLU and captures more subtle non-linearities.
+    # ReLU is simpler and used in the original paper.
+    # GELU is now used in models like BERT and GPT for better training dynamics
+    
+    
 ## Why do we have to apply RELU or GELU between the layers in the FFN:
+
+
+
+
+
+
+
+
+# Pre-norm makes training deep Transformers more stable.
+# Post-norm was used in the original Transformer but can become unstable when stacking many layers (why newer models moved to pre-norm).

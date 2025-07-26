@@ -47,3 +47,6 @@ class SinPositionalEncoding(nn.Module): # we need to inherit because of register
     # controlling extreme shifts in weights during training 
     # speeding convergence 
     # improvign generalization
+# we only calculate the batch normalizaation durign training and in inference we use it
+# here's the formula to calculate it:
+# if momentum is 0.1, then 10 percent of it comes from the current batch and 90 percent is kept from all the previous batches
