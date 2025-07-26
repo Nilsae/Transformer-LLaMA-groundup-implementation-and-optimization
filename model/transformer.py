@@ -85,7 +85,7 @@ class FeedForward(nn.Module):
     
     
     
-class Transformer(nn.Module):
+class TransformerUnit(nn.Module):
     def __init__(self, embed_dim, num_heads, hidden_dim, is_autoregressive = True, dropout_rate = 0.1):
         super().__init__()
         self.attention = MultiHeadSelfAttention(embed_dim, num_heads, is_autoregressive)
@@ -118,20 +118,23 @@ class Transformer(nn.Module):
 # Post-norm was used in the original Transformer but can become unstable when stacking many layers (why newer models moved to pre-norm).
 
 
-
-
+# attention is all you need: 
+# We apply dropout to the sums of the embeddings and the positional encodings in both the encoder and decoder stacks.
+# We also apply dropout to the output of each sub-layer (before it is added to the sub-layer input and normalized).
 class TransformerEncoder(nn.Module):
     def __init__(self, vocab_size, batch_size = 16, num_layers = 6, seq_len = 16, embed_dim = 64, num_heads = 2, hidden_dim = 128, is_autoregressive = True, dropout_rate = 0.1):
         super().__init__()
         self.embedding_layer = nn.Embedding(vocab_size, embed_dim)
         self.num_layers = num_layers
-        self.encoder_stack = nn.ModuleList([Transformer(embed_dim, num_heads, hidden_dim, is_autoregressive, dropout_rate) for i in range(num_layers)])
+        self.encoder_stack = nn.ModuleList([TransformerUnit(embed_dim, num_heads, hidden_dim, is_autoregressive, dropout_rate) for i in range(num_layers)])
         self.pos_encoding = SinPositionalEncoding(seq_len, embed_dim)
+        self.dropout = nn.Dropout(dropout_rate)
     def forward(self,x):
         x = self.embedding_layer(x)
         batch_size = x.size(0)
         seq_len = x.size(1)
         x = x + self.pos_encoding(seq_len, batch_size)
+        x = self.dropout(x)
         for i in range(self.num_layers):
             x = self.encoder_stack[i](x)
         return x
