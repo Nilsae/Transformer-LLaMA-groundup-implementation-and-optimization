@@ -131,15 +131,15 @@ class TransformerEncoderUnit(nn.Module):
         self.attention_layer_norm = nn.LayerNorm(embed_dim)
         self.FFN_layer_norm = nn.LayerNorm(embed_dim)
         self.drop_out = nn.Dropout(dropout_rate)
-    def forward(self, input):
-        attn_out, _, _ = self.attention(input)
+    def forward(self, input, past_k=None, past_v=None):
+        attn_out, past_k, past_v = self.attention(input, past_k, past_v)
         attn_out_added_input = attn_out + input # residula 1
         normalized_attn_out = self.attention_layer_norm(attn_out_added_input)
         FFN_out = self.FFN(normalized_attn_out)
         FFN_out_added_input = FFN_out + normalized_attn_out # residual 2 # before we did norm in the attn class - so now the residul is to the final attn output which is the normalized one
         normalized_FFN = self.FFN_layer_norm(FFN_out_added_input)
-        transformer_out = self.dropout(normalized_FFN)
-        return transformer_out
+        transformer_out = self.drop_out(normalized_FFN)
+        return transformer_out, past_k, past_v
  
 ## What is GELU:
     # GELU is smoother than ReLU and captures more subtle non-linearities.
@@ -173,9 +173,11 @@ class TransformerEncoder(nn.Module):
         seq_len = x.size(1)
         x = x + self.pos_encoding(seq_len, batch_size)
         x = self.dropout(x)
+        past_k = [None] * self.num_layers
+        past_v = [None] * self.num_layers
         for i in range(self.num_layers):
-            x = self.encoder_stack[i](x)
-        return x
+            x, past_k[i], past_v[i]  = self.encoder_stack[i](x, past_k[i], past_v[i])
+        return x, past_k, past_v
     
 class TransformerDecoderUnit(nn.Module):
     def __init__(self, embed_dim = 64, num_heads = 2, hidden_dim = 128, dropout_rate = 0.1):
@@ -187,11 +189,36 @@ class TransformerDecoderUnit(nn.Module):
         self.drop_out = nn.Dropout(dropout_rate)
         self.cross_attention_layer = CrossAttention(embed_dim, num_heads, dropout_rate= 0.1)
         self.FFN = FeedForward(embed_dim, hidden_dim, dropout_rate)
-    def forward(self, decoder_in, encoder_out):
-        self_attn_out, _, _ = self.self_attention_layer(decoder_in)
+    def forward(self, decoder_in, encoder_out, past_k_self = None, past_v_self = None, past_k_cross = None, past_v_cross = None):
+        self_attn_out, past_k_self, past_v_self = self.self_attention_layer(decoder_in, past_k_self, past_v_self)
         norm_self_attn_out = decoder_in + self.self_attention_layer_norm(self_attn_out)
-        cross_attn_out, _, _ = self.cross_attention_layer(norm_self_attn_out, encoder_out)
+        cross_attn_out, past_k_cross, past_v_cross = self.cross_attention_layer(norm_self_attn_out, encoder_out, past_k_cross, past_v_cross)
         norm_cross_attn_out = norm_self_attn_out + self.cross_attention_layer_norm(cross_attn_out)
         FFN_out = self.FFN(norm_cross_attn_out)
         norm_FFN_out  = norm_cross_attn_out + self.FFN_layer_norm(FFN_out)
-        return norm_FFN_out
+        return norm_FFN_out, past_k_self, past_v_self, past_k_cross, past_v_cross
+    
+class TransformerDecoder(nn.Module):
+    def __init__(self, vocab_size, batch_size = 16, num_layers = 6, seq_len = 16, embed_dim = 64, num_heads = 2, hidden_dim = 128, is_autoregressive = True, dropout_rate = 0.1):
+        super().__init__()
+        self.embedding_layer = nn.Embedding(vocab_size, embed_dim)
+        self.num_layers = num_layers
+        self.decoder_stack = nn.ModuleList([TransformerDecoderUnit(embed_dim, num_heads, hidden_dim, is_autoregressive, dropout_rate) for i in range(num_layers)])
+        self.pos_encoding = SinPositionalEncoding(seq_len, embed_dim)
+        self.dropout = nn.Dropout(dropout_rate)
+        self.final_projection_layer = nn.Linear(embed_dim, vocab_size)
+    def forward(self,decoder_input, encoder_output):
+        embedded_x = self.embedding_layer(decoder_input)
+        batch_size = embedded_x.size(0)
+        seq_len = embedded_x.size(1)
+        x = embedded_x + self.pos_encoding(seq_len, batch_size)
+        x = self.dropout(x)
+        past_k_self = [None] * self.num_layers
+        past_v_self = [None] * self.num_layers
+        past_k_cross = [None] * self.num_layers
+        past_v_cross = [None] * self.num_layers
+
+        for i in range(self.num_layers):
+            x,  past_k_self[i], past_v_self[i], past_k_cross[i], past_v_cross[i]= \
+                self.decoder_stack[i](x, encoder_output, past_k_self[i], past_v_self[i], past_k_cross[i], past_v_cross[i])
+        return self.final_projection_layer(x), past_k_self, past_v_self, past_k_cross, past_v_cross
