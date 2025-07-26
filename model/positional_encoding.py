@@ -11,11 +11,21 @@ class LearnedPositionalEncoding(nn.Module):
         embed_out = self.pos_embedding(positions)
         return embed_out.unsqueeze(0) + x
         
-class SinPositionalEncoding():
-    
-    def sinusoidal_encoding(batch_size, seq_len, embed_dim):
-        
-        # conceptually:
+class SinPositionalEncoding(nn.Module): # we need to inherit because of register_buffer
+    def __init__(self,max_seq_len, embed_dim, ):
+        super().__init__()
+        pos = torch.tensor([[i] for i in range(max_seq_len)])
+        i = torch.arange(0, embed_dim//2, 1)
+        pos_encoding = torch.zeros(max_seq_len, embed_dim)    
+        divisor_term = 10000**(2 * i / embed_dim)
+        matrix = pos/divisor_term
+        pos_encoding[:, 0::2] = torch.sin(matrix) # first dim is batch sizes
+        pos_encoding[:, 1::2] = torch.cos(matrix)
+        self.register_buffer("pos_encoding", pos_encoding)
+    def sinusoidal_encoding(self, seq_len, batch_size): # bc batch size may vary
+        return self.pos_encoding.unsqueeze(0).expand(batch_size, -1, -1)[:, :seq_len, :]
+
+# conceptually:
         # out  = torch.zeros(seq_len, embed_dim)
         # for pos in range(seq_len):
         #     for dim in range(embed_dim):
@@ -24,15 +34,4 @@ class SinPositionalEncoding():
         #         else:
         #             out[pos][dim] = math.cos(pos/10000**(2*(dim//2)/embed_dim))
         
-        # properly;
-        
-        pos = torch.tensor([[i] for i in range(seq_len)])
-        i = torch.arange(0, embed_dim//2, 1)
-        pos_encoding = torch.zeros(seq_len, embed_dim)    
-        divisor_term = 10000**(2 * i / embed_dim)
-        matrix = pos/divisor_term
-        pos_encoding[:, 0::2] = torch.sin(matrix) # first dim is batch sizes
-        pos_encoding[:, 1::2] = torch.cos(matrix)
-        out = pos_encoding.unsqueeze(0).expand(batch_size, -1, -1)
-        return out
-
+    
