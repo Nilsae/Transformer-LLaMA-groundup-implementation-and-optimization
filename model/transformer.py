@@ -81,5 +81,23 @@ class FeedForward(nn.Module):
     
     
     
-    
- 
+class Transformer(nn.Module):
+    def __init__(self, embed_dim, num_heads, hidden_dim, is_autoregressive = True, dropout_rate = 0.1):
+        super().__init__()
+        self.attention = MultiHeadSelfAttention(embed_dim, num_heads, is_autoregressive)
+        self.FFN = FeedForward(embed_dim, hidden_dim)
+        self.attention_layer_norm = nn.LayerNorm(embed_dim)
+        self.FFN_layer_norm = nn.LayerNorm(embed_dim)
+        self.dropout = nn.Dropout(dropout_rate)
+    def forward(self, input):
+        normalized_x = self.attention_layer_norm(input)
+        attn_out, _, _, _ = self.attention(normalized_x)
+        FFN_out = self.FFN(attn_out)
+        FFN_out_added_input = FFN_out + attn_out # attn_out already has a + input in it - so our residula conection here is with the attn_out
+        normalized_FFN = self.FFN_layer_norm(FFN_out_added_input)
+        transformer_out = self.dropout(normalized_FFN)
+        return transformer_out
+
+## What is GELU:
+
+## Why do we have to apply RELU or GELU between the layers in the FFN:
