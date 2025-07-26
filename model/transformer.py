@@ -2,6 +2,7 @@
 import torch 
 import torch.nn as nn
 import math
+from positional_encoding import SinPositionalEncoding, LearnedPositionalEncoding
 
 
 def scaled_dot_product_attention(q, k, v, mask=None, past_k = None, past_v = None, is_autoregressive= True): #(batch_size, seq_len_k, d_k) or (batch_size,num_heads, seq_len_k, d_k)
@@ -23,7 +24,8 @@ def scaled_dot_product_attention(q, k, v, mask=None, past_k = None, past_v = Non
     return torch.matmul(attn_weights, v)
 
 
-
+# embed_dim : size of the vector used to represent each token (word, character, etc.)
+# seq_len :  number of tokens in the input sequence which is equal to number of time steps ( one token at a time)
 
 
 class MultiHeadSelfAttention(nn.Module):
@@ -62,10 +64,22 @@ class MultiHeadSelfAttention(nn.Module):
     #detatching: not compute gradients - we can do it in inference where we are not training and we want to save memory, or when we dont want the information of the gradient of a specific variable in our trainign because it would be cheating from the labels
     
     
+# This FFN is position-wse, which means
+# the same FFN is applied to each token (aka position) independently
+# not mixing the tokens unlike attention
+# each token's embedding vec is processed separately but with the shared weights
+class FeedForward(nn.Module):
+    def __init__(self, embed_dim, hidden_dim):
+        super().__init__()
+        self.MLP = nn.Sequential(
+            nn.Linear(embed_dim, hidden_dim),
+            nn.Gelu(), # or RELU - why?
+            nn.Linear(hidden_dim, embed_dim),
+        )
+    def forward(self,input):
+        return self.MLP(input)
     
     
     
     
-    
-    
-    
+ 
