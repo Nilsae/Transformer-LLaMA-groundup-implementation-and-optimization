@@ -123,14 +123,14 @@ class FeedForward(nn.Module):
     
     
     
-class TransformerUnit(nn.Module):
+class TransformerEncoderUnit(nn.Module):
     def __init__(self, embed_dim, num_heads, hidden_dim, is_autoregressive = True, dropout_rate = 0.1):
         super().__init__()
         self.attention = MultiHeadSelfAttention(embed_dim, num_heads, is_autoregressive)
         self.FFN = FeedForward(embed_dim, hidden_dim, dropout_rate)
         self.attention_layer_norm = nn.LayerNorm(embed_dim)
         self.FFN_layer_norm = nn.LayerNorm(embed_dim)
-        
+        self.drop_out = nn.Dropout(dropout_rate)
     def forward(self, input):
         attn_out, _, _ = self.attention(input)
         attn_out_added_input = attn_out + input # residula 1
@@ -164,7 +164,7 @@ class TransformerEncoder(nn.Module):
         super().__init__()
         self.embedding_layer = nn.Embedding(vocab_size, embed_dim)
         self.num_layers = num_layers
-        self.encoder_stack = nn.ModuleList([TransformerUnit(embed_dim, num_heads, hidden_dim, is_autoregressive, dropout_rate) for i in range(num_layers)])
+        self.encoder_stack = nn.ModuleList([TransformerEncoderUnit(embed_dim, num_heads, hidden_dim, is_autoregressive, dropout_rate) for i in range(num_layers)])
         self.pos_encoding = SinPositionalEncoding(seq_len, embed_dim)
         self.dropout = nn.Dropout(dropout_rate)
     def forward(self,x):
@@ -177,9 +177,21 @@ class TransformerEncoder(nn.Module):
             x = self.encoder_stack[i](x)
         return x
     
-class TransformerDecoder(nn.Module):
-    def __init__():
+class TransformerDecoderUnit(nn.Module):
+    def __init__(self, embed_dim = 64, num_heads = 2, hidden_dim = 128, dropout_rate = 0.1):
         super().__init__()
-    def forward():
-        
-        
+        self.self_attention_layer = MultiHeadSelfAttention(embed_dim, num_heads, is_autoregressive = True)
+        self.self_attention_layer_norm = nn.LayerNorm(embed_dim)
+        self.cross_attention_layer_norm = nn.LayerNorm(embed_dim)
+        self.FFN_layer_norm = nn.LayerNorm(embed_dim)
+        self.drop_out = nn.Dropout(dropout_rate)
+        self.cross_attention_layer = CrossAttention(embed_dim, num_heads, dropout_rate= 0.1)
+        self.FFN = FeedForward(embed_dim, hidden_dim, dropout_rate)
+    def forward(self, decoder_in, encoder_out):
+        self_attn_out, _, _ = self.self_attention_layer(decoder_in)
+        norm_self_attn_out = decoder_in + self.self_attention_layer_norm(self_attn_out)
+        cross_attn_out, _, _ = self.cross_attention_layer(norm_self_attn_out, encoder_out)
+        norm_cross_attn_out = norm_self_attn_out + self.cross_attention_layer_norm(cross_attn_out)
+        FFN_out = self.FFN(norm_cross_attn_out)
+        norm_FFN_out  = norm_cross_attn_out + self.FFN_layer_norm(FFN_out)
+        return norm_FFN_out
