@@ -122,7 +122,7 @@ class FeedForward(nn.Module):
         super().__init__()
         self.MLP = nn.Sequential(
             nn.Linear(embed_dim, hidden_dim),
-            nn.Gelu(), # or RELU - why?
+            nn.ReLU(), # or GELU - why?
             nn.Linear(hidden_dim, embed_dim),
         )
         self.dropout = nn.Dropout(dropout_rate)
@@ -211,7 +211,7 @@ class TransformerDecoder(nn.Module):
         super().__init__()
         self.embedding_layer = nn.Embedding(vocab_size, embed_dim)
         self.num_layers = num_layers
-        self.decoder_stack = nn.ModuleList([TransformerDecoderUnit(embed_dim, num_heads, hidden_dim, is_autoregressive, dropout_rate) for i in range(num_layers)])
+        self.decoder_stack = nn.ModuleList([TransformerDecoderUnit(embed_dim, num_heads, hidden_dim, dropout_rate) for i in range(num_layers)])
         self.pos_encoding = SinPositionalEncoding(seq_len, embed_dim)
         self.dropout = nn.Dropout(dropout_rate)
         self.final_projection_layer = nn.Linear(embed_dim, vocab_size)

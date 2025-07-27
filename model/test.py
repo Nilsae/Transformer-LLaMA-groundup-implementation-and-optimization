@@ -3,19 +3,13 @@ import torch
 from attention_with_KV_caching import MultiHeadSelfAttention
 from positional_encoding import SinPositionalEncoding
 import matplotlib.pyplot as plt
-# Create a logger
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)  # or DEBUG, WARNING, etc.
-
-# Create handler (console output)
 handler = logging.StreamHandler()
 handler.setLevel(logging.INFO)
-
-# Create formatter and add it to the handler
 formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s')
 handler.setFormatter(formatter)
-
-# Add handler to the logger
 logger.addHandler(handler)
 
 
