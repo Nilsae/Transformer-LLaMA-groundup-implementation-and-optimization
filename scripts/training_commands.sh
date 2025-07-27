@@ -1,0 +1,2 @@
+export TOKENIZERS_PARALLELISM=false
+source venv/bin/acticate

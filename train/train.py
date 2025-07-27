@@ -25,8 +25,6 @@ class TokenizedDataset(Dataset):
         return len(self.data)
     def __getitem__(self, idx):
         sample = self.data[idx]
-        logger.info(sample["input_ids"].shape)
-        logger.info(sample["attention_mask"].shape)
         
         squeezed_sample = {
             "input_ids" : sample["input_ids"].view(-1),  # or .squeeze(0)

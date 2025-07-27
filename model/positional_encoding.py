@@ -1,5 +1,17 @@
 import torch, math
 import torch.nn as nn
+import torch
+import json
+import torch.optim as optim
+
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)  # or DEBUG, WARNING, etc.
+handler = logging.StreamHandler()
+handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d] %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 class LearnedPositionalEncoding(nn.Module):
     def __init__(self, max_seq_len, embed_dim):

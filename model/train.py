@@ -5,12 +5,20 @@ import torch.optim as optim
 from transformer import TransformerDecoder, TransformerEncoder
 from transformers import AutoTokenizer
 from torch.utils.data import  Dataset, DataLoader
+# import logging
+# logger = logging.getLogger(__name__)
+# logger.setLevel(logging.INFO)  # or DEBUG, WARNING, etc.
+# handler = logging.StreamHandler()
+# handler.setLevel(logging.INFO)
+# formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s')
+# handler.setFormatter(formatter)
+# logger.addHandler(handler)
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)  # or DEBUG, WARNING, etc.
+logger.setLevel(logging.DEBUG)  # or DEBUG, WARNING, etc.
 handler = logging.StreamHandler()
-handler.setLevel(logging.INFO)
-formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s')
+handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d] %(message)s')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
@@ -23,8 +31,6 @@ class TokenizedDataset(Dataset):
         return len(self.data)
     def __getitem__(self, idx):
         sample = self.data[idx]
-        logger.info(sample["input_ids"].shape)
-        logger.info(sample["attention_mask"].shape)
         
         squeezed_sample = {
             "input_ids" : sample["input_ids"].view(-1),  # or .squeeze(0)
@@ -43,7 +49,7 @@ tokenizer = AutoTokenizer.from_pretrained('./.hf_models/gpt2-medium')
 tokenizer.pad_token = tokenizer.eos_token
 tokenized_data = []
 for d in data:
-    tokenizer_out = tokenizer(d["story"], return_tensors="pt", padding="max_length", truncation=True, return_attention_mask=True)
+    tokenizer_out = tokenizer(d["story"], return_tensors="pt", padding="max_length", max_length=16, truncation=True, return_attention_mask=True)
     tokenized_d = {
         "input_ids" : tokenizer_out["input_ids"],
         "attention_mask" : tokenizer_out["attention_mask"]
@@ -73,12 +79,13 @@ for i in range(num_epochs):
         input_ids = batch["input_ids"].to(device)
         attention_mask = batch["attention_mask"].to(device)  
         target = input_ids[:, 1:].to(device)                # All but first token, All but last token
-        encoder_output, *_ = encoder(input_ids)
+        encoder_output, *_ = encoder(input_ids[:, 1:])
         decoder_output, *_ = decoder(input_ids[:, :-1] , encoder_output)
-        loss = loss_fn(decoder_output.view(-1, vocab_size), target.view(-1)).to(device)
+        loss = loss_fn(decoder_output.reshape(-1, vocab_size), target.reshape(-1))
         loss.backward()
         optimizer.step()
         
     
-torch.save(encoder.state_dict())
-torch.save(decoder.state_dict())
+torch.save(encoder.state_dict(), "encoder.pt")
+torch.save(decoder.state_dict(), "decoder.pt")
+

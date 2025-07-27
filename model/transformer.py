@@ -5,6 +5,15 @@ import math
 from positional_encoding import SinPositionalEncoding, LearnedPositionalEncoding
 
 
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)  # or DEBUG, WARNING, etc.
+handler = logging.StreamHandler()
+handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d] %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
 
 
 
@@ -175,6 +184,9 @@ class TransformerEncoder(nn.Module):
         self.encoder_stack = nn.ModuleList([TransformerEncoderUnit(embed_dim, num_heads, hidden_dim, is_autoregressive, dropout_rate) for i in range(num_layers)])
         self.pos_encoding = SinPositionalEncoding(seq_len, embed_dim)
         self.dropout = nn.Dropout(dropout_rate)
+        self.seq_len= seq_len
+        self.embed_dim = embed_dim
+        self.vocab_size = vocab_size
     def forward(self,x):
         x = self.embedding_layer(x)
         batch_size = x.size(0)
