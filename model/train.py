@@ -1,5 +1,5 @@
 import torch
-import json
+import json, os
 import torch.nn as nn
 import torch.optim as optim
 from transformer import TransformerDecoder, TransformerEncoder
@@ -14,7 +14,8 @@ handler.setLevel(logging.DEBUG)
 formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d] %(message)s')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
-
+checkpoint_dir = "checkpoints"
+os.makedirs(checkpoint_dir, exist_ok=True)
 
 class TokenizedDataset(Dataset):
     def __init__(self, samples):
@@ -66,7 +67,21 @@ writer = SummaryWriter(log_dir="runs/transformer_experiment")
 
 num_epochs = 10
 global_step = 0
-for i in range(num_epochs):
+resume_from_checkpoint = True  
+start_epoch = 0
+if resume_from_checkpoint:
+    checkpoint_files = [f for f in os.listdir(checkpoint_dir) if f.endswith(".pt")]
+    if checkpoint_files:
+        latest = sorted(checkpoint_files)[-1]
+        print(f"Loading checkpoint: {latest}")
+        checkpoint = torch.load(os.path.join(checkpoint_dir, latest), map_location=device)
+
+        encoder.load_state_dict(checkpoint["encoder_state_dict"])
+        decoder.load_state_dict(checkpoint["decoder_state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        start_epoch = checkpoint["epoch"]
+        print(f"Resumed from epoch {start_epoch}")
+for i in range(start_epoch, num_epochs):
     encoder.train()
     decoder.train()
     for batch in train_loader:
@@ -74,7 +89,7 @@ for i in range(num_epochs):
         input_ids = batch["input_ids"].to(device)
         attention_mask = batch["attention_mask"].to(device)  
         target = input_ids[:, 1:].to(device)                # All but first token, All but last token
-        encoder_output, *_ = encoder(input_ids[:, 1:])
+        encoder_output, *_ = encoder(input_ids)
         decoder_output, *_ = decoder(input_ids[:, :-1] , encoder_output)
         loss = loss_fn(decoder_output.reshape(-1, vocab_size), target.reshape(-1))
         loss.backward()
@@ -82,7 +97,18 @@ for i in range(num_epochs):
         writer.add_scalar("Loss/train", loss.item(), global_step)
         global_step += 1
         
-    
+    checkpoint = {
+    "epoch": i + 1,
+    "encoder_state_dict": encoder.state_dict(),
+    "decoder_state_dict": decoder.state_dict(),
+    "optimizer_state_dict": optimizer.state_dict(),
+    "loss": loss.item()
+    }
+    torch.save(checkpoint, os.path.join(checkpoint_dir, f"checkpoint_epoch_{i+1}.pt"))
+        
+# num_samples = len(tokenized_data)
+# batch_size = 16
+# total steps  = ceil(num_samples / batch_size) * num_epochs
 torch.save(encoder.state_dict(), "encoder.pt")
 torch.save(decoder.state_dict(), "decoder.pt")
 

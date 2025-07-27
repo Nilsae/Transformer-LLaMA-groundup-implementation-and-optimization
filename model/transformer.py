@@ -113,9 +113,10 @@ class CrossAttention(nn.Module):
         [batch_size, seq_len, embed_dim] = q.size() # or batch_size, seq_len, embed_dim = q.size() - they both work
         assert embed_dim % self.num_heads == 0
         head_dim = int(embed_dim//self.num_heads)
+        src_len = k.size(1)
         q = q.reshape([batch_size, seq_len, self.num_heads, head_dim]).transpose(1, 2)
-        k = k.reshape([batch_size, seq_len, self.num_heads, head_dim]).transpose(1, 2)
-        v = v.reshape([batch_size, seq_len, self.num_heads, head_dim]).transpose(1, 2)
+        k = k.reshape([batch_size, src_len, self.num_heads, head_dim]).transpose(1, 2)
+        v = v.reshape([batch_size, src_len, self.num_heads, head_dim]).transpose(1, 2)
         attn_out = self.cross_attention(q, k, v, past_k = past_k, past_v = past_v)
         attn_out = attn_out.transpose(1, 2).reshape([batch_size, seq_len, embed_dim])
         assert attn_out.shape == input.shape
