@@ -4,11 +4,12 @@ from attention_with_KV_caching import MultiHeadSelfAttention
 from positional_encoding import SinPositionalEncoding
 import matplotlib.pyplot as plt
 
+import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)  # or DEBUG, WARNING, etc.
+logger.setLevel(logging.DEBUG)  # or DEBUG, WARNING, etc.
 handler = logging.StreamHandler()
-handler.setLevel(logging.INFO)
-formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s')
+handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d] %(message)s')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 

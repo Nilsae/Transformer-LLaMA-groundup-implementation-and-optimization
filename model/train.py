@@ -5,14 +5,7 @@ import torch.optim as optim
 from transformer import TransformerDecoder, TransformerEncoder
 from transformers import AutoTokenizer
 from torch.utils.data import  Dataset, DataLoader
-# import logging
-# logger = logging.getLogger(__name__)
-# logger.setLevel(logging.INFO)  # or DEBUG, WARNING, etc.
-# handler = logging.StreamHandler()
-# handler.setLevel(logging.INFO)
-# formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s')
-# handler.setFormatter(formatter)
-# logger.addHandler(handler)
+from torch.utils.tensorboard import SummaryWriter
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)  # or DEBUG, WARNING, etc.
@@ -69,8 +62,10 @@ loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
 
 params =list(encoder.parameters()) + list(decoder.parameters())
 optimizer = optim.Adam(params, betas=(0.9, 0.98), eps=1e-9)
+writer = SummaryWriter(log_dir="runs/transformer_experiment")
 
-num_epochs = 2
+num_epochs = 10
+global_step = 0
 for i in range(num_epochs):
     encoder.train()
     decoder.train()
@@ -84,8 +79,11 @@ for i in range(num_epochs):
         loss = loss_fn(decoder_output.reshape(-1, vocab_size), target.reshape(-1))
         loss.backward()
         optimizer.step()
+        writer.add_scalar("Loss/train", loss.item(), global_step)
+        global_step += 1
         
     
 torch.save(encoder.state_dict(), "encoder.pt")
 torch.save(decoder.state_dict(), "decoder.pt")
 
+writer.close()

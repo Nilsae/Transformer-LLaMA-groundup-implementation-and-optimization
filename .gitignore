@@ -12,6 +12,7 @@ __pycache__/
 *.py[cod]
 *.ipynb_checkpoints
 venv/
+runs/
 .env/
 
 # Ignore large datasets or generated files
