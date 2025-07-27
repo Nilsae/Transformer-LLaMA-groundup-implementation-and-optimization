@@ -5,8 +5,6 @@ import torch.optim as optim
 from transformer import TransformerDecoder, TransformerEncoder
 from transformers import AutoTokenizer
 from torch.utils.data import  Dataset, DataLoader
-
-
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)  # or DEBUG, WARNING, etc.
@@ -54,17 +52,33 @@ for d in data:
 
 torch.save(tokenized_data, "tokenized_data.pt")
 train_loader = DataLoader(TokenizedDataset(tokenized_data), batch_size = 16, shuffle=True)
-
-encoder = TransformerEncoder(vocab_size = tokenizer.vocab_size, batch_size = 16, num_layers = 6, seq_len = 16, embed_dim = 64, num_heads = 2, hidden_dim = 128, is_autoregressive = True, dropout_rate = 0.1)
-decoder = TransformerDecoder(vocab_size = tokenizer.vocab_size, batch_size = 16, num_layers = 6, seq_len = 16, embed_dim = 64, num_heads = 2, hidden_dim = 128, is_autoregressive = True, dropout_rate = 0.1)
+vocab_size = tokenizer.vocab_size
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+encoder = TransformerEncoder(vocab_size = vocab_size, batch_size = 16, num_layers = 6, seq_len = 16, embed_dim = 64, num_heads = 2, hidden_dim = 128, is_autoregressive = True, dropout_rate = 0.1)
+decoder = TransformerDecoder(vocab_size = vocab_size, batch_size = 16, num_layers = 6, seq_len = 16, embed_dim = 64, num_heads = 2, hidden_dim = 128, is_autoregressive = True, dropout_rate = 0.1)
+encoder.to(device)
+decoder.to(device)
 loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
 
-for batch in train_loader:
-    input_ids = batch["input_ids"]
-    attention_mask = batch["attention_mask"]   
-    target = input_ids[:, 1:]                # All but first token, All but last token
-    encoder_output, *_ = encoder(input_ids)
-    decoder_output, *_ = decoder(input_ids[:, :-1] , encoder_output)
-    loss = loss_fn(decoder_output.view(-1, tokenizer.vocab_size), target.view(-1))
-    
+
+params =list(encoder.parameters()) + list(decoder.parameters())
+optimizer = optim.Adam(params, betas=(0.9, 0.98), eps=1e-9)
+
 num_epochs = 2
+for i in range(num_epochs):
+    encoder.train()
+    decoder.train()
+    for batch in train_loader:
+        optimizer.zero_grad()
+        input_ids = batch["input_ids"].to(device)
+        attention_mask = batch["attention_mask"].to(device)  
+        target = input_ids[:, 1:].to(device)                # All but first token, All but last token
+        encoder_output, *_ = encoder(input_ids)
+        decoder_output, *_ = decoder(input_ids[:, :-1] , encoder_output)
+        loss = loss_fn(decoder_output.view(-1, vocab_size), target.view(-1)).to(device)
+        loss.backward()
+        optimizer.step()
+        
+    
+torch.save(encoder.state_dict())
+torch.save(decoder.state_dict())
