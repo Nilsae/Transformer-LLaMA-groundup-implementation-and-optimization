@@ -144,7 +144,7 @@ class FeedForward(nn.Module):
 class TransformerEncoderUnit(nn.Module):
     def __init__(self, embed_dim, num_heads, hidden_dim, is_autoregressive = True, dropout_rate = 0.1, use_lora=False, r=8, alpha = 16):
         super().__init__()
-        self.attention = MultiHeadSelfAttention(embed_dim, num_heads, is_autoregressive, dropout_rate=dropout_rate, use_lora=use_lora, r=r, alpha = alpha)
+        self.attention = MultiHeadSelfAttention(embed_dim, num_heads, is_autoregressive = False, dropout_rate=dropout_rate, use_lora=use_lora, r=r, alpha = alpha) # very important
         self.FFN = FeedForward(embed_dim, hidden_dim, dropout_rate)
         self.attention_layer_norm = nn.LayerNorm(embed_dim)
         self.FFN_layer_norm = nn.LayerNorm(embed_dim)
