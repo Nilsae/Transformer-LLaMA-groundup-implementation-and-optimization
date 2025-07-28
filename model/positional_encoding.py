@@ -13,6 +13,23 @@ formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(filename)s:%(lin
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
+
+
+class RotaryPositionalEmbedding(nn.Module):
+    def __init__(self):
+        super().__init__()
+    def forward(self):
+        return
+
+
+
+
+
+
+
+
+
+
 class LearnedPositionalEncoding(nn.Module):
     def __init__(self, max_seq_len, embed_dim):
         super().__init__()
@@ -62,3 +79,5 @@ class SinPositionalEncoding(nn.Module): # we need to inherit because of register
 # we only calculate the batch normalizaation durign training and in inference we use it
 # here's the formula to calculate it:
 # if momentum is 0.1, then 10 percent of it comes from the current batch and 90 percent is kept from all the previous batches
+
+
