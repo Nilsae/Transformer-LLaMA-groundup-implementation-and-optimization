@@ -1,7 +1,8 @@
 import logging
-import torch
-from attention_with_KV_caching import MultiHeadSelfAttention
-from positional_encoding import SinPositionalEncoding
+import torch, sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from model.attention_with_KV_caching import MultiHeadSelfAttention
+from model.positional_encoding import SinPositionalEncoding
 import matplotlib.pyplot as plt
 
 import logging

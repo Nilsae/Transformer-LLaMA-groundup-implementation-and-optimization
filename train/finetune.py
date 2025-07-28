@@ -1,8 +1,9 @@
 import torch
-import json, os
+import json, os, sys
 import torch.nn as nn
 import torch.optim as optim
-from transformer import TransformerDecoder, TransformerEncoder
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from model.transformer import TransformerDecoder, TransformerEncoder
 from transformers import AutoTokenizer
 from torch.utils.data import  Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -15,7 +16,7 @@ formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(filename)s:%(lin
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 checkpoint_dir = "checkpoints"
-log_writer_dir = "runs/transformer_experiment"
+log_writer_dir = "runs/transformer_lora_finetune"
 os.makedirs(checkpoint_dir, exist_ok=True)
 
 class TokenizedDataset(Dataset):
@@ -55,8 +56,8 @@ torch.save(tokenized_data, "tokenized_data.pt")
 train_loader = DataLoader(TokenizedDataset(tokenized_data), batch_size = 16, shuffle=True)
 vocab_size = tokenizer.vocab_size
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-encoder = TransformerEncoder(vocab_size = vocab_size, batch_size = 16, num_layers = 6, seq_len = 16, embed_dim = 64, num_heads = 2, hidden_dim = 128, is_autoregressive = True, dropout_rate = 0.1)
-decoder = TransformerDecoder(vocab_size = vocab_size, batch_size = 16, num_layers = 6, seq_len = 16, embed_dim = 64, num_heads = 2, hidden_dim = 128, is_autoregressive = True, dropout_rate = 0.1)
+encoder = TransformerEncoder(vocab_size = vocab_size, batch_size = 16, num_layers = 6, seq_len = 16, embed_dim = 64, num_heads = 2, hidden_dim = 128, is_autoregressive = True, dropout_rate = 0.1, use_lora=True, r=8, alpha = 16)
+decoder = TransformerDecoder(vocab_size = vocab_size, batch_size = 16, num_layers = 6, seq_len = 16, embed_dim = 64, num_heads = 2, hidden_dim = 128, is_autoregressive = True, dropout_rate = 0.1, use_lora=True, r=8, alpha = 16)
 encoder.to(device)
 decoder.to(device)
 loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
@@ -66,7 +67,7 @@ params =list(encoder.parameters()) + list(decoder.parameters())
 optimizer = optim.Adam(params, betas=(0.9, 0.98), eps=1e-9)
 writer = SummaryWriter(log_dir=log_writer_dir)
 
-num_epochs = 11
+num_epochs = 10
 global_step = 0
 resume_from_checkpoint = True  
 start_epoch = 0
@@ -79,7 +80,8 @@ if resume_from_checkpoint:
 
         encoder.load_state_dict(checkpoint["encoder_state_dict"], strict=False)
         decoder.load_state_dict(checkpoint["decoder_state_dict"], strict=False)
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        params =list(encoder.parameters()) + list(decoder.parameters())
+        optimizer = optim.Adam(params, betas=(0.9, 0.98), eps=1e-9)
         start_epoch = checkpoint["epoch"]
         print(f"Resumed from epoch {start_epoch}")
 for i in range(start_epoch, num_epochs):
@@ -98,6 +100,7 @@ for i in range(start_epoch, num_epochs):
         writer.add_scalar("Loss/train", loss.item(), global_step)
         global_step += 1
         
+    writer.flush()
     checkpoint = {
     "epoch": i + 1,
     "encoder_state_dict": encoder.state_dict(),

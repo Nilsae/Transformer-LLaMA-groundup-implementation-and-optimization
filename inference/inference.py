@@ -1,5 +1,6 @@
-import torch, os
-from transformer import TransformerDecoder, TransformerEncoder
+import torch, os, sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from model.transformer import TransformerDecoder, TransformerEncoder
 from transformers import AutoTokenizer
 import logging
 logger = logging.getLogger(__name__)
