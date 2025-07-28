@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import math
 from positional_encoding import SinPositionalEncoding, LearnedPositionalEncoding
-
+from optimization_utils import LoRALinear
 
 import logging
 logger = logging.getLogger(__name__)
@@ -22,13 +22,13 @@ logger.addHandler(handler)
 
 
 class MultiHeadSelfAttention(nn.Module):
-    def __init__(self, embed_dim, num_heads, is_autoregressive = True, dropout_rate= 0.1):
+    def __init__(self, embed_dim, num_heads, is_autoregressive = True, dropout_rate= 0.1, use_lora=False, r=8, alpha = 16):
         super().__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
-        self.q_projection_layer = nn.Linear(embed_dim, embed_dim) 
+        self.q_projection_layer = LoRALinear(embed_dim, use_lora=use_lora, r=r, alpha = alpha) # nn.Linear(embed_dim, embed_dim) 
         self.k_projection_layer = nn.Linear(embed_dim, embed_dim) 
-        self.v_projection_layer = nn.Linear(embed_dim, embed_dim) 
+        self.v_projection_layer = LoRALinear(embed_dim, use_lora=use_lora, r=r, alpha = alpha) #nn.Linear(embed_dim, embed_dim) 
         self.final_projection_layer = nn.Linear(embed_dim, embed_dim) 
         self.embed_dim = embed_dim
         # self.layer_norm = nn.LayerNorm(self.embed_dim) there is already attention  normalization in the transformer class
@@ -82,13 +82,13 @@ class MultiHeadSelfAttention(nn.Module):
     #detatching: not compute gradients - we can do it in inference where we are not training and we want to save memory, or when we dont want the information of the gradient of a specific variable in our trainign because it would be cheating from the labels
 
 class CrossAttention(nn.Module):
-    def __init__(self, embed_dim, num_heads, dropout_rate= 0.1):
+    def __init__(self, embed_dim, num_heads, dropout_rate= 0.1, use_lora=False, r=8, alpha = 16):
         super().__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
-        self.q_projection_layer = nn.Linear(embed_dim, embed_dim) 
+        self.q_projection_layer = LoRALinear(embed_dim, use_lora=use_lora, r=r, alpha = alpha) # nn.Linear(embed_dim, embed_dim) 
         self.k_projection_layer = nn.Linear(embed_dim, embed_dim) 
-        self.v_projection_layer = nn.Linear(embed_dim, embed_dim) 
+        self.v_projection_layer = LoRALinear(embed_dim, use_lora=use_lora, r=r, alpha = alpha) #nn.Linear(embed_dim, embed_dim) 
         self.final_projection_layer = nn.Linear(embed_dim, embed_dim) 
         self.embed_dim = embed_dim
         self.dropout = nn.Dropout(dropout_rate)
@@ -142,9 +142,9 @@ class FeedForward(nn.Module):
     
     
 class TransformerEncoderUnit(nn.Module):
-    def __init__(self, embed_dim, num_heads, hidden_dim, is_autoregressive = True, dropout_rate = 0.1):
+    def __init__(self, embed_dim, num_heads, hidden_dim, is_autoregressive = True, dropout_rate = 0.1, use_lora=False, r=8, alpha = 16):
         super().__init__()
-        self.attention = MultiHeadSelfAttention(embed_dim, num_heads, is_autoregressive)
+        self.attention = MultiHeadSelfAttention(embed_dim, num_heads, is_autoregressive, dropout_rate=dropout_rate, use_lora=use_lora, r=r, alpha = alpha)
         self.FFN = FeedForward(embed_dim, hidden_dim, dropout_rate)
         self.attention_layer_norm = nn.LayerNorm(embed_dim)
         self.FFN_layer_norm = nn.LayerNorm(embed_dim)
@@ -178,11 +178,11 @@ class TransformerEncoderUnit(nn.Module):
 # We apply dropout to the sums of the embeddings and the positional encodings in both the encoder and decoder stacks.
 # We also apply dropout to the output of each sub-layer (before it is added to the sub-layer input and normalized).
 class TransformerEncoder(nn.Module):
-    def __init__(self, vocab_size, batch_size = 16, num_layers = 6, seq_len = 16, embed_dim = 64, num_heads = 2, hidden_dim = 128, is_autoregressive = True, dropout_rate = 0.1):
+    def __init__(self, vocab_size, batch_size = 16, num_layers = 6, seq_len = 16, embed_dim = 64, num_heads = 2, hidden_dim = 128, is_autoregressive = True, dropout_rate = 0.1, use_lora=False, r=8, alpha = 16):
         super().__init__()
         self.embedding_layer = nn.Embedding(vocab_size, embed_dim)
         self.num_layers = num_layers
-        self.encoder_stack = nn.ModuleList([TransformerEncoderUnit(embed_dim, num_heads, hidden_dim, is_autoregressive, dropout_rate) for i in range(num_layers)])
+        self.encoder_stack = nn.ModuleList([TransformerEncoderUnit(embed_dim, num_heads, hidden_dim, is_autoregressive, dropout_rate, use_lora, r, alpha) for i in range(num_layers)])
         self.pos_encoding = SinPositionalEncoding(seq_len, embed_dim)
         self.dropout = nn.Dropout(dropout_rate)
         self.seq_len= seq_len
@@ -201,14 +201,14 @@ class TransformerEncoder(nn.Module):
         return x, past_k, past_v
     
 class TransformerDecoderUnit(nn.Module):
-    def __init__(self, embed_dim = 64, num_heads = 2, hidden_dim = 128, dropout_rate = 0.1):
+    def __init__(self, embed_dim = 64, num_heads = 2, hidden_dim = 128, dropout_rate = 0.1, use_lora=False, r=8, alpha = 16):
         super().__init__()
-        self.self_attention_layer = MultiHeadSelfAttention(embed_dim, num_heads, is_autoregressive = True)
+        self.self_attention_layer = MultiHeadSelfAttention(embed_dim, num_heads, is_autoregressive = True, dropout_rate=dropout_rate, use_lora=use_lora, r=r, alpha = alpha)
         self.self_attention_layer_norm = nn.LayerNorm(embed_dim)
         self.cross_attention_layer_norm = nn.LayerNorm(embed_dim)
         self.FFN_layer_norm = nn.LayerNorm(embed_dim)
         self.drop_out = nn.Dropout(dropout_rate)
-        self.cross_attention_layer = CrossAttention(embed_dim, num_heads, dropout_rate= 0.1)
+        self.cross_attention_layer = CrossAttention(embed_dim, num_heads, dropout_rate= dropout_rate, use_lora=use_lora, r=r, alpha = alpha)
         self.FFN = FeedForward(embed_dim, hidden_dim, dropout_rate)
     def forward(self, decoder_in, encoder_out, past_k_self = None, past_v_self = None, past_k_cross = None, past_v_cross = None, inference = False):
         self_attn_out, past_k_self, past_v_self = self.self_attention_layer(decoder_in, past_k_self, past_v_self, inference = inference)
@@ -220,11 +220,11 @@ class TransformerDecoderUnit(nn.Module):
         return norm_FFN_out, past_k_self, past_v_self, past_k_cross, past_v_cross
     
 class TransformerDecoder(nn.Module):
-    def __init__(self, vocab_size, batch_size = 16, num_layers = 6, seq_len = 16, embed_dim = 64, num_heads = 2, hidden_dim = 128, is_autoregressive = True, dropout_rate = 0.1):
+    def __init__(self, vocab_size, batch_size = 16, num_layers = 6, seq_len = 16, embed_dim = 64, num_heads = 2, hidden_dim = 128, is_autoregressive = True, dropout_rate = 0.1, use_lora=False, r=8, alpha = 16):
         super().__init__()
         self.embedding_layer = nn.Embedding(vocab_size, embed_dim)
         self.num_layers = num_layers
-        self.decoder_stack = nn.ModuleList([TransformerDecoderUnit(embed_dim, num_heads, hidden_dim, dropout_rate) for i in range(num_layers)])
+        self.decoder_stack = nn.ModuleList([TransformerDecoderUnit(embed_dim, num_heads, hidden_dim, dropout_rate, use_lora, r, alpha) for i in range(num_layers)])
         self.pos_encoding = SinPositionalEncoding(seq_len, embed_dim)
         self.dropout = nn.Dropout(dropout_rate)
         self.final_projection_layer = nn.Linear(embed_dim, vocab_size)

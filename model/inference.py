@@ -17,12 +17,12 @@ checkpoint = torch.load("checkpoints/checkpoint_epoch_10.pt", map_location=devic
 tokenizer = AutoTokenizer.from_pretrained('./.hf_models/gpt2-medium')
 tokenizer.pad_token = tokenizer.eos_token
 vocab_size = tokenizer.vocab_size
-encoder = TransformerEncoder(vocab_size = vocab_size, batch_size = 16, num_layers = 6, seq_len = 16, embed_dim = 64, num_heads = 2, hidden_dim = 128, is_autoregressive = True, dropout_rate = 0.1)
-decoder = TransformerDecoder(vocab_size = vocab_size, batch_size = 16, num_layers = 6, seq_len = 16, embed_dim = 64, num_heads = 2, hidden_dim = 128, is_autoregressive = True, dropout_rate = 0.1)
+encoder = TransformerEncoder(vocab_size = vocab_size, batch_size = 16, num_layers = 6, seq_len = 16, embed_dim = 64, num_heads = 2, hidden_dim = 128, is_autoregressive = True, dropout_rate = 0.1, use_lora=True, r=8, alpha = 16)
+decoder = TransformerDecoder(vocab_size = vocab_size, batch_size = 16, num_layers = 6, seq_len = 16, embed_dim = 64, num_heads = 2, hidden_dim = 128, is_autoregressive = True, dropout_rate = 0.1, use_lora=True, r=8, alpha = 16)
 encoder.to(device)
 decoder.to(device)
-encoder.load_state_dict(checkpoint["encoder_state_dict"])
-decoder.load_state_dict(checkpoint["decoder_state_dict"])
+encoder.load_state_dict(checkpoint["encoder_state_dict"], strict=False)
+decoder.load_state_dict(checkpoint["decoder_state_dict"], strict=False)
 encoder.eval()
 decoder.eval()
 def top_p_sampling(logits, p=0.9):
