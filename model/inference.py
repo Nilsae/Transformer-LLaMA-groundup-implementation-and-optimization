@@ -38,7 +38,7 @@ def top_p_sampling(logits, p=0.9):
     probs = torch.softmax(filtered_logits, dim=-1)
     return torch.multinomial(probs, num_samples=1) # samples from a discrete probability distribution (categorical), like rolling a biased die.
 
-def generate(prompt_text, max_gen_len=50):
+def generate(prompt_text, max_gen_len=15):
     with torch.no_grad():
         prompt = tokenizer(prompt_text, return_tensors="pt", padding="max_length", truncation=True, max_length=16)
         input_ids = prompt["input_ids"].to(device)
