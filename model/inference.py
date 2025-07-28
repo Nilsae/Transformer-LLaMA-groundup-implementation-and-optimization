@@ -25,6 +25,19 @@ encoder.load_state_dict(checkpoint["encoder_state_dict"])
 decoder.load_state_dict(checkpoint["decoder_state_dict"])
 encoder.eval()
 decoder.eval()
+def top_p_sampling(logits, p=0.9):
+    sorted_logits, sorted_indices = torch.sort(logits, descending=True, dim=-1)
+    probs = torch.softmax(sorted_logits, dim=-1) # (batch_size, vocab_size) or (batch_size, seq_len, vocab_size)
+    cumulative_probs = torch.cumsum(probs, dim=-1) #if x = [1, 2, 3, 4],  torch.sum(x) = 10,  torch.cumsum(x, dim=0) =  [1, 3, 6, 10]
+    sorted_mask = cumulative_probs > p
+    sorted_mask[..., 1:] = sorted_mask[..., :-1].clone() #  shift the mask one to right -> we keep at least 1 token (first token)
+    # we use clone() to avoid in-place modification errors
+    sorted_mask[..., 0] = 0 # manually un-masks the first token - redundant but safety net
+    sorted_logits[sorted_mask] = float('-inf')
+    filtered_logits = torch.gather(sorted_logits, -1, torch.argsort(sorted_indices, dim=-1))
+    probs = torch.softmax(filtered_logits, dim=-1)
+    return torch.multinomial(probs, num_samples=1) # samples from a discrete probability distribution (categorical), like rolling a biased die.
+
 def generate(prompt_text, max_gen_len=50):
     with torch.no_grad():
         prompt = tokenizer(prompt_text, return_tensors="pt", padding="max_length", truncation=True, max_length=16)
@@ -38,7 +51,8 @@ def generate(prompt_text, max_gen_len=50):
         for cur_seq in range(max_gen_len):
             decoder_output, *_ = decoder(decoder_input[:,max(0, cur_seq-15):], encoder_output, inference = True)
             next_token_logits = decoder_output[:, -1, :] 
-            next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)  # (1, 1)
+            # next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)  # (1, 1) greedy
+            next_token = top_p_sampling(next_token_logits, p=0.9)
             decoder_input = torch.cat([decoder_input, next_token], dim=1)
             if next_token.item() == tokenizer.eos_token_id:
                 break
@@ -49,5 +63,5 @@ def generate(prompt_text, max_gen_len=50):
 
 if __name__ == "__main__":
     prompt = "The stars whispered a secret."
-    result = generate(prompt, max_gen_len=40)
+    result = generate(prompt, max_gen_len=10)
     print("\nGenerated story:\n", result)
