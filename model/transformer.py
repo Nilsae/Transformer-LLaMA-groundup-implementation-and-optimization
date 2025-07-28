@@ -35,7 +35,7 @@ class MultiHeadSelfAttention(nn.Module):
         self.is_autoregressive = is_autoregressive
         self.dropout = nn.Dropout(dropout_rate)
     
-    def scaled_dot_product_attention(self, q, k, v, causal_mask=None, padding_mask = None, past_k = None, past_v = None, is_autoregressive= True): #(batch_size, seq_len_k, d_k) or (batch_size,num_heads, seq_len_k, d_k)
+    def scaled_dot_product_attention(self, q, k, v, causal_mask=None, padding_mask = None, past_k = None, past_v = None, is_autoregressive= True, inference = False): #(batch_size, seq_len_k, d_k) or (batch_size,num_heads, seq_len_k, d_k)
         if past_k is not None and past_v is not None:
             assert past_k.shape == past_v.shape
             k = torch.cat([past_k, k], dim = -2) # torch.cat([tensor1, tensor2, ...])
@@ -55,13 +55,13 @@ class MultiHeadSelfAttention(nn.Module):
                 scaled_scores = scaled_scores.masked_fill(combined_mask == 0, -float('inf'))
             else:
                 scaled_scores = scaled_scores.masked_fill(causal_mask == 0, -float('inf'))
-        
-        scaled_scores = scaled_scores - scaled_scores.max(dim=-1, keepdim=True).values #Prevents softmax overflow by centering scores.  # not in the original transformer paper
+        if not inference:
+            scaled_scores = scaled_scores - scaled_scores.max(dim=-1, keepdim=True).values #Prevents softmax overflow by centering scores.  # not in the original transformer paper
         attn_weights = torch.softmax(scaled_scores, dim = -1) 
         attn_weights_dropout = self.dropout(attn_weights)
         return torch.matmul(attn_weights_dropout, v)
     
-    def forward(self, input, past_k=None, past_v=None, padding_mask = None):
+    def forward(self, input, past_k=None, past_v=None, padding_mask = None, inference  = False):
         q = self.q_projection_layer(input)
         k = self.k_projection_layer(input)
         v = self.v_projection_layer(input)
@@ -71,7 +71,7 @@ class MultiHeadSelfAttention(nn.Module):
         q = q.reshape([batch_size, seq_len, self.num_heads, head_dim]).transpose(1, 2)
         k = k.reshape([batch_size, seq_len, self.num_heads, head_dim]).transpose(1, 2)
         v = v.reshape([batch_size, seq_len, self.num_heads, head_dim]).transpose(1, 2)
-        attn_out = self.scaled_dot_product_attention(q, k, v, causal_mask = None, padding_mask=padding_mask, past_k = past_k, past_v = past_v, is_autoregressive = self.is_autoregressive)
+        attn_out = self.scaled_dot_product_attention(q, k, v, causal_mask = None, padding_mask=padding_mask, past_k = past_k, past_v = past_v, is_autoregressive = self.is_autoregressive, inference = inference)
         # for head in self.num_heads:  prevents GPU from parallelizing operations efficiently and introduces slow Python-level control flow.
         #     attn_out = scaled_dot_product_attention(q[:, :, head, :], k[:, :, head, :], v[:, :, head, :])
         attn_out = attn_out.transpose(1, 2).reshape([batch_size, seq_len, embed_dim])
@@ -149,8 +149,8 @@ class TransformerEncoderUnit(nn.Module):
         self.attention_layer_norm = nn.LayerNorm(embed_dim)
         self.FFN_layer_norm = nn.LayerNorm(embed_dim)
         self.drop_out = nn.Dropout(dropout_rate)
-    def forward(self, input, past_k=None, past_v=None):
-        attn_out, past_k, past_v = self.attention(input, past_k, past_v)
+    def forward(self, input, past_k=None, past_v=None, inference = False):
+        attn_out, past_k, past_v = self.attention(input, past_k, past_v ,inference = inference)
         attn_out_added_input = attn_out + input # residula 1
         normalized_attn_out = self.attention_layer_norm(attn_out_added_input)
         FFN_out = self.FFN(normalized_attn_out)
@@ -188,7 +188,7 @@ class TransformerEncoder(nn.Module):
         self.seq_len= seq_len
         self.embed_dim = embed_dim
         self.vocab_size = vocab_size
-    def forward(self,x):
+    def forward(self,x, inference = False):
         x = self.embedding_layer(x)
         batch_size = x.size(0)
         seq_len = x.size(1)
@@ -197,7 +197,7 @@ class TransformerEncoder(nn.Module):
         past_k = [None] * self.num_layers
         past_v = [None] * self.num_layers
         for i in range(self.num_layers):
-            x, past_k[i], past_v[i]  = self.encoder_stack[i](x, past_k[i], past_v[i])
+            x, past_k[i], past_v[i]  = self.encoder_stack[i](x, past_k[i], past_v[i], inference = inference)
         return x, past_k, past_v
     
 class TransformerDecoderUnit(nn.Module):
@@ -210,8 +210,8 @@ class TransformerDecoderUnit(nn.Module):
         self.drop_out = nn.Dropout(dropout_rate)
         self.cross_attention_layer = CrossAttention(embed_dim, num_heads, dropout_rate= 0.1)
         self.FFN = FeedForward(embed_dim, hidden_dim, dropout_rate)
-    def forward(self, decoder_in, encoder_out, past_k_self = None, past_v_self = None, past_k_cross = None, past_v_cross = None):
-        self_attn_out, past_k_self, past_v_self = self.self_attention_layer(decoder_in, past_k_self, past_v_self)
+    def forward(self, decoder_in, encoder_out, past_k_self = None, past_v_self = None, past_k_cross = None, past_v_cross = None, inference = False):
+        self_attn_out, past_k_self, past_v_self = self.self_attention_layer(decoder_in, past_k_self, past_v_self, inference = inference)
         norm_self_attn_out = decoder_in + self.self_attention_layer_norm(self_attn_out)
         cross_attn_out, past_k_cross, past_v_cross = self.cross_attention_layer(norm_self_attn_out, encoder_out, past_k_cross, past_v_cross)
         norm_cross_attn_out = norm_self_attn_out + self.cross_attention_layer_norm(cross_attn_out)
@@ -228,7 +228,7 @@ class TransformerDecoder(nn.Module):
         self.pos_encoding = SinPositionalEncoding(seq_len, embed_dim)
         self.dropout = nn.Dropout(dropout_rate)
         self.final_projection_layer = nn.Linear(embed_dim, vocab_size)
-    def forward(self,decoder_input, encoder_output):
+    def forward(self,decoder_input, encoder_output, inference = False):
         embedded_x = self.embedding_layer(decoder_input)
         batch_size = embedded_x.size(0)
         seq_len = embedded_x.size(1)
@@ -241,5 +241,5 @@ class TransformerDecoder(nn.Module):
 
         for i in range(self.num_layers):
             x,  past_k_self[i], past_v_self[i], past_k_cross[i], past_v_cross[i]= \
-                self.decoder_stack[i](x, encoder_output, past_k_self[i], past_v_self[i], past_k_cross[i], past_v_cross[i])
+                self.decoder_stack[i](x, encoder_output, past_k_self[i], past_v_self[i], past_k_cross[i], past_v_cross[i], inference = inference)
         return self.final_projection_layer(x), past_k_self, past_v_self, past_k_cross, past_v_cross
