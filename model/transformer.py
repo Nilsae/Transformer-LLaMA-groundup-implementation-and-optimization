@@ -102,19 +102,22 @@ class CrossAttention(nn.Module):
         self.final_projection_layer = nn.Linear(embed_dim, embed_dim) 
         self.embed_dim = embed_dim
         self.dropout = nn.Dropout(dropout_rate)
-    def cross_attention(self,q, k, v, past_k = None, past_v = None, padding_mask = None): 
-        if past_k is not None and past_v is not None:
+    def cross_attention(self,q, k, v, past_k = None, past_v = None, padding_mask = None, inference = False): 
+        if inference and past_k is not None and past_v is not None:
             assert past_k.shape == past_v.shape
             k = torch.cat([past_k, k], dim = -2) # torch.cat([tensor1, tensor2, ...])
             v = torch.cat([past_v, v], dim = -2)
+        if not inference and (past_k is not None or past_v is not None):
+            raise ValueError("past_k and past_v should only be used during inference.")
         scores = torch.matmul(q, k.transpose(-2, -1))
         scaled_scores = scores/math.sqrt(k.size(-1)) 
         if padding_mask is not None:
                 scaled_scores = scaled_scores.masked_fill(padding_mask == 0, -float('inf'))
-        scaled_scores = scaled_scores - scaled_scores.max(dim=-1, keepdim=True).values 
+        if not inference:
+            scaled_scores = scaled_scores - scaled_scores.max(dim=-1, keepdim=True).values 
         attn_weights = torch.softmax(scaled_scores, dim = -1) 
-        attn_weights_dropout = self.dropout(attn_weights)
-        return torch.matmul(attn_weights_dropout, v)
+        attn_weights = self.dropout(attn_weights) if not inference else attn_weights
+        return torch.matmul(attn_weights, v)
     
     def forward(self, input, encoder_out, past_k=None, past_v=None):
         q = self.q_projection_layer(input)
