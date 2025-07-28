@@ -36,10 +36,15 @@ class MultiHeadSelfAttention(nn.Module):
         self.dropout = nn.Dropout(dropout_rate)
     
     def scaled_dot_product_attention(self, q, k, v, causal_mask=None, padding_mask = None, past_k = None, past_v = None, is_autoregressive= True, inference = False): #(batch_size, seq_len_k, d_k) or (batch_size,num_heads, seq_len_k, d_k)
-        if past_k is not None and past_v is not None:
+        if inference and past_k is not None and past_v is not None:
             assert past_k.shape == past_v.shape
             k = torch.cat([past_k, k], dim = -2) # torch.cat([tensor1, tensor2, ...])
             v = torch.cat([past_v, v], dim = -2)
+        if not inference and (past_k is not None or past_v is not None):
+            raise ValueError("past_k and past_v should only be used during inference.")
+         # past_k and past_v are used only during inference/generation to speed up autoregressive decoding, where the model generates tokens one at a time.
+         # During training, you compute everything in parallel for the full sequence — so you don’t need to cache or reuse past values.
+        #  Using past_k here would Complicate batch logic, Break the efficient matrix-multiply implementation, Not give any speed benefit
         scores = torch.matmul(q, k.transpose(-2, -1))
         scaled_scores = scores/math.sqrt(k.size(-1)) 
         
@@ -49,17 +54,22 @@ class MultiHeadSelfAttention(nn.Module):
                 seq_len_k = scores.size(-1)
                 causal_mask = torch.tril(torch.ones(seq_len_q, seq_len_k, device=q.device)).bool()
                 causal_mask = causal_mask.unsqueeze(0).unsqueeze(0)  # shape (1, 1, seq_len_q, seq_len_k) 1 -> all the batches
-        if is_autoregressive:
             if padding_mask is not None:
-                combined_mask = padding_mask & causal_mask
+                combined_mask = causal_mask & padding_mask
                 scaled_scores = scaled_scores.masked_fill(combined_mask == 0, -float('inf'))
             else:
                 scaled_scores = scaled_scores.masked_fill(causal_mask == 0, -float('inf'))
+        else:
+            if padding_mask is not None:
+                scaled_scores = scaled_scores.masked_fill(padding_mask == 0, -float('inf'))
+                
         if not inference:
             scaled_scores = scaled_scores - scaled_scores.max(dim=-1, keepdim=True).values #Prevents softmax overflow by centering scores.  # not in the original transformer paper
         attn_weights = torch.softmax(scaled_scores, dim = -1) 
-        attn_weights_dropout = self.dropout(attn_weights)
-        return torch.matmul(attn_weights_dropout, v)
+        attn_weights = self.dropout(attn_weights) if not inference else attn_weights
+        # we use dropout only during training to prevent overfitting. 
+        # During inference (evaluation or generation), we want the model’s behavior to be deterministic and fully active and no random dropping.
+        return torch.matmul(attn_weights, v)
     
     def forward(self, input, past_k=None, past_v=None, padding_mask = None, inference  = False):
         q = self.q_projection_layer(input)
