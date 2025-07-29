@@ -6,6 +6,7 @@
 + sinusidal and learned positional encoding implementation
 + LoRA implementation
 + Rotary positional embedding implementation
++ LLaMA-v1 implementation
 
 I'm using ComputeCanada's Narval cluster for all the tests and experiments. 
 

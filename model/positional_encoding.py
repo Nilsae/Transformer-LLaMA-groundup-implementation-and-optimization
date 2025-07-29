@@ -19,11 +19,11 @@ logger.addHandler(handler)
 # sinusidal Adds sin/cos to embeddings	- uses all of  embed dim - modifies Token embeddings (input) - 	Absolute position 
 # rotary Rotates query/key vectors - appies on Usually first half of head_dim - modifies Query and Key (before attention) - relative position - distance aware and casual-aware
 class RotaryPositionalEmbedding(nn.Module): #[batch, num_heads, seq_len, head_dim]
-    def __init__(self, max_seq_len, embed_dim ):
+    def __init__(self, max_seq_len, head_dim ):
         super().__init__()
         pos = torch.arange(0, max_seq_len, dtype=torch.float32).unsqueeze(1)
-        i = torch.arange(0, embed_dim//2, 1, dtype=torch.float32) 
-        divisor_term = 10000**(2 * i / embed_dim)
+        i = torch.arange(0, head_dim//2, 1, dtype=torch.float32) 
+        divisor_term = 10000**(2 * i / head_dim)
         matrix = pos/divisor_term
         sin_term = torch.sin(matrix).unsqueeze(0).unsqueeze(0) 
         cos_term = torch.cos(matrix).unsqueeze(0).unsqueeze(0)

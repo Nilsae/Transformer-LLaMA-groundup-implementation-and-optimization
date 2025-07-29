@@ -89,7 +89,7 @@ class MultiHeadSelfAttention(nn.Module):
         attn_out = self.final_projection_layer(attn_out)
         return attn_out, k, v #This is post-norm, used in older models. Most modern architectures like GPT-2/3 use pre-norm: x_norm = self.layer_norm(input)
     
-    #detatching: not compute gradients - we can do it in inference where we are not training and we want to save memory, or when we dont want the information of the gradient of a specific variable in our trainign because it would be cheating from the labels
+    #TODO: detatching: not compute gradients - we can do it in inference where we are not training and we want to save memory, or when we dont want the information of the gradient of a specific variable in our trainign because it would be cheating from the labels
 
 class CrossAttention(nn.Module):
     def __init__(self, embed_dim, num_heads, dropout_rate= 0.1, use_lora=False, r=8, alpha = 16):
@@ -136,7 +136,7 @@ class CrossAttention(nn.Module):
         attn_out = self.final_projection_layer(attn_out)
         return attn_out, k, v #This is post-norm, used in older models. Most modern architectures like GPT-2/3 use pre-norm: x_norm = self.layer_norm(input)
     
-# This FFN is position-wse, which means
+# This FFN is position-wise, which means
 # the same FFN is applied to each token (aka position) independently
 # not mixing the tokens unlike attention
 # each token's embedding vec is processed separately but with the shared weights
@@ -177,7 +177,7 @@ class TransformerEncoderUnit(nn.Module):
     # ReLU is simpler and used in the original paper.
     # GELU is now used in models like BERT and GPT for better training dynamics
     
-    
+#TODO:  
 ## Why do we have to apply RELU or GELU between the layers in the FFN:
 
 

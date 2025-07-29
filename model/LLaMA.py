@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import math
 from model.positional_encoding import RotaryPositionalEmbedding
-from optimization_utils import LoRALinear
+from model.optimization_utils import LoRALinear
 
 import logging
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ class MultiHeadSelfAttention(nn.Module):
         self.q_projection_layer = LoRALinear(embed_dim, use_lora=use_lora, r=r, alpha = alpha, bias=False) # nn.Linear(embed_dim, embed_dim) 
         self.k_projection_layer = nn.Linear(embed_dim, embed_dim, bias=False) 
         self.v_projection_layer = LoRALinear(embed_dim, use_lora=use_lora, r=r, alpha = alpha, bias=False) #nn.Linear(embed_dim, embed_dim) 
-        self.RoPE  = RotaryPositionalEmbedding(seq_len, embed_dim)
+        self.RoPE  = RotaryPositionalEmbedding(seq_len, head_dim) # rope calcs the PEs per HEAD unlike SinPE
         self.final_projection_layer = nn.Linear(embed_dim, embed_dim, bias=False)
         self.embed_dim = embed_dim
     
@@ -84,7 +84,7 @@ class FeedForward(nn.Module):
         hidden_dim = 4 * embed_dim # based on LLaMA-v1 paper
         self.MLP = nn.Sequential(
             nn.Linear(embed_dim, hidden_dim),
-            nn.SiLU() , # vs GELU or ReLU
+            nn.SiLU() , # vs GELU or ReLU #TODOs
             nn.Linear(hidden_dim, embed_dim),
         )
     def forward(self,input):
@@ -95,7 +95,7 @@ class TransformerBlock(nn.Module):
     def __init__(self, embed_dim = 64, num_heads = 2, seq_len = 16, use_lora=False, r=8, alpha = 16):
         super().__init__()
         self.self_attention_layer = MultiHeadSelfAttention(embed_dim, num_heads, seq_len, use_lora=use_lora, r=r, alpha = alpha)
-        self.rms_norm1 = nn.RMSNorm(embed_dim) # RMS norm vs Layernorm: RMSNorm only scales, doesn't shift
+        self.rms_norm1 = nn.RMSNorm(embed_dim) # RMS norm vs Layernorm: RMSNorm only scales, doesn't shift #TODO
         self.rms_norm2 = nn.RMSNorm(embed_dim)
         #  LLaMA-v1 uses no dropouts at all
         self.FFN = FeedForward(embed_dim)
@@ -115,7 +115,7 @@ class TransformerDecoder(nn.Module):
         self.num_layers = num_layers
         self.decoder_stack = nn.ModuleList([TransformerBlock(embed_dim, num_heads, seq_len, use_lora, r, alpha) for i in range(num_layers)])
         self.output_projection = nn.Linear(embed_dim, vocab_size)
-        self.output_projection.weight = self.embedding_layer.weight #why does LLaMA tie weights?
+        self.output_projection.weight = self.embedding_layer.weight #why does LLaMA tie weights? #TODO
     def forward(self,x, inference = False):
         x = self.embedding_layer(x)
         batch_size = x.size(0)
@@ -129,7 +129,7 @@ class TransformerDecoder(nn.Module):
                 self.decoder_stack[i](x, past_k_self[i], past_v_self[i], inference = inference)
         return self.output_projection(x), past_k_self, past_v_self
     
-# llama uses RMS norm instead of layernorma and does prenorm instead of postnorm
+# llama uses RMS norm instead of layernorm and does prenorm instead of postnorm 
 # in case torch.nn does not have it
 # class RMSNorm(nn.Module):
 #     def __init__(self, d, eps=1e-6):
