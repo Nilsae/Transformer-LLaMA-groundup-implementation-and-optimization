@@ -3,9 +3,9 @@ import torch.nn as nn
 
 #Sometimes LoRA initializes A and B weights to small values (e.g., ~N(0, 0.01)) to avoid destabilizing inference early.
 class LoRALinear(nn.Module):
-    def __init__(self, embed_dim, use_lora=False, r=8, alpha = 16):
+    def __init__(self, embed_dim, use_lora=False, r=8, alpha = 16, bias=True):
         super().__init__()
-        self.linear = nn.Linear(embed_dim, embed_dim)
+        self.linear = nn.Linear(embed_dim, embed_dim, bias = bias)
         if use_lora:
             for param in self.linear.parameters():
                 param.requires_grad = False

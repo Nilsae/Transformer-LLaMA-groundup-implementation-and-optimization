@@ -44,8 +44,11 @@ class RotaryPositionalEmbedding(nn.Module): #[batch, num_heads, seq_len, head_di
 # it flattens all the dims from start dim to the end dim 
 # above, we ue .flatten(-2) bc flatten dims -1 and -2 :[B, H, T, D/2, 2] -> [B, H, T, D]
 
+# Q apply rope - 	Defines "what to look for", so inject relative position
+# K apply rope - 	Defines "where to look", so inject relative position
+# V do not apply -	Carries content, rotation would distort information
 
-
+# Sin PE is ADDED to the input coming from the embedding layer before in moves to the encoder/decoder stacks
  #  unsqueeze on the last dimention converts each element to a tensor: [ element,  element  ]->[ [element],  [element]    ], (a, b) -> (a, b, 1)
         # unquzeeze on the first dimention(dim0) converst the whole tensor to [whole tensor], tensor - > [tensor], (a, b) -> (1, a, b)
 
