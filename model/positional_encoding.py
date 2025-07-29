@@ -14,15 +14,40 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 
-
-class RotaryPositionalEmbedding(nn.Module):
-    def __init__(self):
+# Unlike sinusidal PE (which encodes absolute positions), 
+# RoPE ensures that the dot product between two rotated vectors encodes their relative distance
+# sinusidal Adds sin/cos to embeddings	- uses all of  embed dim - modifies Token embeddings (input) - 	Absolute position 
+# rotary Rotates query/key vectors - appies on Usually first half of head_dim - modifies Query and Key (before attention) - relative position - distance aware and casual-aware
+class RotaryPositionalEmbedding(nn.Module): #[batch, num_heads, seq_len, head_dim]
+    def __init__(self, max_seq_len, embed_dim ):
         super().__init__()
-    def forward(self):
-        return
+        pos = torch.arange(0, max_seq_len, dtype=torch.float32).unsqueeze(1)
+        i = torch.arange(0, embed_dim//2, 1, dtype=torch.float32) 
+        divisor_term = 10000**(2 * i / embed_dim)
+        matrix = pos/divisor_term
+        sin_term = torch.sin(matrix).unsqueeze(0).unsqueeze(0) 
+        cos_term = torch.cos(matrix).unsqueeze(0).unsqueeze(0)
+        self.register_buffer("sin_cached", sin_term)
+        self.register_buffer("cos_cached", cos_term)
+        
+    def forward(self, vector): 
+        vec_even = vector[:, :, :, 0::2] # or [..., 0::2] even dims
+        vec_odd = vector[:, :, :, 1::2]
+        seq_len = vector.shape[2]
+        rotated_even = vec_even * self.cos_cached[:, :, :seq_len, :] - vec_odd * self.sin_cached[:, :, :seq_len, :] # Element-wise Multiplication
+        rotated_odd = vec_even * self.sin_cached[:, :, :seq_len, :] + vec_odd * self.cos_cached[:, :, :seq_len, :]
+        # rotated = torch.stack((rotated_even, rotated_odd), dim=-1)  # shape: [B, H, T, D/2, 2]
+        # return rotated.reshape(rotated.shape[0], rotated.shape[1], seq_len, rotated.shape[3]*rotated.shape[4])
+        return torch.cat([rotated_even.unsqueeze(-1), rotated_odd.unsqueeze(-1)], dim=-1).flatten(-2)
+
+# tensor.flatten(start_dim) works same as tensor.flatten(start_dim, end_dim)
+# it flattens all the dims from start dim to the end dim 
+# above, we ue .flatten(-2) bc flatten dims -1 and -2 :[B, H, T, D/2, 2] -> [B, H, T, D]
 
 
 
+ #  unsqueeze on the last dimention converts each element to a tensor: [ element,  element  ]->[ [element],  [element]    ], (a, b) -> (a, b, 1)
+        # unquzeeze on the first dimention(dim0) converst the whole tensor to [whole tensor], tensor - > [tensor], (a, b) -> (1, a, b)
 
 
 
@@ -48,7 +73,8 @@ class LearnedPositionalEncoding(nn.Module):
 class SinPositionalEncoding(nn.Module): # we need to inherit because of register_buffer
     def __init__(self,max_seq_len, embed_dim ):
         super().__init__()
-        pos = torch.tensor([[i] for i in range(max_seq_len)])
+        pos = torch.tensor([[i] for i in range(max_seq_len)]) # or torch.arange(0, max_seq_len, dtype=torch.float32).unsqueeze(1) 
+       
         i = torch.arange(0, embed_dim//2, 1)
         pos_encoding = torch.zeros(max_seq_len, embed_dim)    
         divisor_term = 10000**(2 * i / embed_dim)
