@@ -97,7 +97,7 @@ class TransformerBlock(nn.Module):
         self.self_attention_layer = MultiHeadSelfAttention(embed_dim, num_heads, seq_len, use_lora=use_lora, r=r, alpha = alpha)
         self.rms_norm1 = nn.RMSNorm(embed_dim) # RMS norm vs Layernorm: RMSNorm only scales, doesn't shift
         self.rms_norm2 = nn.RMSNorm(embed_dim)
-        #  LLaMA-v1 uses no dropouts at all
+        #  LLaMA-v1 uses no dropouts at all #TODO: why?
         self.FFN = FeedForward(embed_dim)
     def forward(self, decoder_in, past_k_self = None, past_v_self = None, inference = False):
         norm_decoder_in = self.rms_norm1(decoder_in)

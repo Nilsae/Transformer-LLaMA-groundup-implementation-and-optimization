@@ -83,3 +83,68 @@ class MultiQueryAttention(nn.Module):
         assert attn_out.shape == input.shape
         attn_out = self.final_projection_layer(attn_out)
         return attn_out, k, v
+    
+# L = num_layers    
+class TransformerBlock(nn.Module):
+    def __init__(self, embed_dim = 64, num_heads = 2, seq_len = 16, use_lora=False, r=8, alpha = 16, deepnorm_alpha =4):
+        super().__init__()
+        self.one_over_deepnorm_alpha = 1 / deepnorm_alpha
+        self.self_attention_layer = MultiQueryAttention(embed_dim, num_heads, seq_len, use_lora=use_lora, r=r, alpha = alpha)
+        self.rms_norm1 = nn.RMSNorm(embed_dim) # RMS norm vs Layernorm: RMSNorm only scales, doesn't shift
+        self.rms_norm2 = nn.RMSNorm(embed_dim)
+        self.rms_norm3 = nn.RMSNorm(embed_dim)
+        self.FFN = FeedForward(embed_dim)
+    def forward(self, decoder_in, past_k_self = None, past_v_self = None, inference = False):
+        norm_decoder_in = self.rms_norm1(decoder_in)
+        self_attn_out, past_k_self, past_v_self = self.self_attention_layer(norm_decoder_in, past_k_self, past_v_self, inference = inference)
+        attn_out_residual = self.one_over_deepnorm_alpha * self_attn_out + decoder_in
+        norm_attn_out = self.rms_norm2(attn_out_residual)
+        FFN_out = self.FFN(norm_attn_out)
+        FFN_out_residual = self.one_over_deepnorm_alpha * FFN_out + attn_out_residual
+        return self.self.rms_norm3(FFN_out_residual), past_k_self, past_v_self      # final RMS norm added in deepseek - non existent in llama
+    
+class TransformerDecoder(nn.Module):
+    def __init__(self, vocab_size, batch_size = 16, num_layers = 6, seq_len = 16, embed_dim = 64, num_heads = 2, use_lora=False, r=8, alpha = 16):
+        super().__init__()
+        self.embedding_layer = nn.Embedding(vocab_size, embed_dim)
+        self.num_layers = num_layers
+        deepnorm_alpha = math.sqrt(4 * num_layers)
+        self.decoder_stack = nn.ModuleList([TransformerBlock(embed_dim, num_heads, seq_len, use_lora, r, alpha, deepnorm_alpha) for i in range(num_layers)])
+        self.output_projection = nn.Linear(embed_dim, vocab_size)
+        self.output_projection.weight = self.embedding_layer.weight #why does LLaMA tie weights? #TODO
+        
+    def forward(self,x, inference = False):
+        x = self.embedding_layer(x)
+        batch_size = x.size(0)
+        seq_len = x.size(1)
+        past_k_self = [None] * self.num_layers
+        past_v_self = [None] * self.num_layers
+
+        for i in range(self.num_layers):
+            x,  past_k_self[i], past_v_self[i]= \
+                self.decoder_stack[i](x, past_k_self[i], past_v_self[i], inference = inference)
+        return self.output_projection(x), past_k_self, past_v_self
+class FeedForward(nn.Module):
+    def __init__(self, embed_dim):
+        super().__init__()
+        hidden_dim = 4 * embed_dim # based on LLaMA-v1 paper
+        self.MLP = nn.Sequential(
+            nn.Linear(embed_dim, hidden_dim),
+            SwiGLU(hidden_dim, hidden_dim) , 
+            nn.Linear(hidden_dim, embed_dim),
+        )
+    def forward(self,input):
+        return self.MLP(input)
+    
+class SwiGLU(nn.Module):
+    def __init__(self, dimension):
+        super().__init__()
+        self.linear_1 = nn.Linear(dimension,dimension)
+        self.linear_2 = nn.Linear(dimension,dimension)
+
+    def forward(self, x):
+        output = self.linear_1(x)
+        swish = output * torch.sigmoid(output)
+        swiglu = swish * self.linear_2(x)
+
+        return swiglu
