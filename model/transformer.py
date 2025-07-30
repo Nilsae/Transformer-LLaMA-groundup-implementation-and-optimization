@@ -177,10 +177,27 @@ class TransformerEncoderUnit(nn.Module):
     # ReLU is simpler and used in the original paper.
     # GELU is now used in models like BERT and GPT for better training dynamics
     
-#TODO:  
+
 ## Why do we have to apply RELU or GELU between the layers in the FFN:
+# ReLU (Rectified Linear Unit) introduces non-linearity, which is essential because:
+    # Linear layers alone can't model complex patterns.
+    # Without non-linearity, stacking multiple linear layers is equivalent to a single linear transformation.
+    # ReLU enables the network to approximate any function via composition of linear and non-linear transformations.
+# It helps with efficient training:
+    # ReLU is computationally cheap (max(0, x))
+    # Helps mitigate vanishing gradient problems (compared to sigmoid/tanh)
+    
+# GELU
+# def gelu(x):
+#     return 0.5 * x * (1 + torch.tanh(torch.sqrt(torch.tensor(2.0 / torch.pi)) * (x + 0.044715 * x**3)))
 
+# SiLU
+# def silu(x):
+#     return x * torch.sigmoid(x)
 
+# ReLU
+# def relu(x):
+#     return torch.maximum(x, torch.tensor(0.0))
 
 
 # Pre-norm makes training deep Transformers more stable.

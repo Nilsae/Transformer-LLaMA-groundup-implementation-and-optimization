@@ -1,0 +1,34 @@
++ Why do we use Multi-Head Attention?
+Multi-head attention allows the Transformer to attend to information from different representation subspaces at different positions, in parallel. Instead of computing a single attention distribution, we project the input into multiple sets of queries, keys, and values — one for each head — and apply self-attention independently in each head.
+Each head can learn to focus on different types of relationships. For example, one head might attend to recent tokens, another might focus on a repeated word further back, or even syntactic/semantic roles. This diversity in learned attention patterns makes the model more expressive and better at capturing complex patterns in language.
+After computing attention for all heads, we concatenate their outputs and pass them through a final linear layer. This aggregated view helps the model integrate multiple perspectives for each token.
+
++ What's the difference between self-attention and cross-attention?
+The main difference between self-attention and cross-attention lies in the source of the queries, keys, and values.
+In self-attention, all three — queries, keys, and values — come from the same input sequence. This is used in both the encoder and decoder to let each token attend to all other tokens in its own sequence.
+In contrast, cross-attention is used only in the decoder and enables the decoder to attend to the encoder’s output. Here, the queries come from the decoder’s previous layer, while the keys and values come from the encoder’s final output. This allows the decoder to access relevant context from the input sequence while generating output.
+In terms of architecture, a decoder block first applies masked self-attention, followed by cross-attention, and then a feed-forward network. Each sub-layer is wrapped with residual connections and layer normalization, depending on whether you're using pre-norm or post-norm.
+So, functionally, the mechanism is the same — scaled dot-product attention — but semantically, self-attention learns intra-sequence dependencies, while cross-attention learns inter-sequence dependencies between input and output.
+
++ What’s causal masking and why is it needed?
+Causal masking is used in decoder self-attention layers of Transformer models to enforce autoregressive generation. The idea is to prevent each token from attending to future tokens during training, which would otherwise leak information about the target sequence.
+Technically, we apply a lower-triangular binary mask to the attention score matrix before applying softmax(q.kT/sqrt(d_model)). This ensures that, for each query position, the model can only attend to that position and the ones before it — never the future. This mask typically assigns -inf to the disallowed positions so that softmax turns them into zero attention weights.
+Without causal masking, the decoder would “cheat” during training by seeing future tokens, making it impossible to use the model during inference, where we generate one token at a time.
+It’s important to note that causal masking is only applied in decoder self-attention, not in the encoder or cross-attention modules, because those aren’t autoregressive.
+we dont use it in cross-attention of the decoder because:
+    The encoder output is already computed and fixed before decoding starts.
+    There’s no sequential dependency to preserve.
+    The decoder is allowed — and in fact needs — to see the full encoder output to inform each output token.
+
++ How does attention caching (past\_k, past\_v) work in inference?
+During autoregressive inference, attention caching is used to avoid redundant computation. At each decoding step, the model only sees one new token, but self-attention normally requires keys and values for all previous tokens.
+To speed things up, we cache the previously computed keys and values (past_k, past_v) from earlier time steps. When processing a new token, we compute its query, and concatenate its new key and value with the cached ones. We then compute attention using the full set of past keys/values and only the new query. This way, the model doesn’t have to recompute the full attention stack at every step.
+This significantly improves decoding speed and is a key optimization for inference in autoregressive language models.
+
++ So why don't we use caching during training then?
+We don’t use attention caching during training because we process the entire sequence at once using teacher forcing. This allows us to compute attention in a fully parallel way, which is highly efficient on GPUs.
+Attention caching is primarily used during autoregressive inference, where we generate one token at a time. In that case, recomputing all attention keys and values at every step would be wasteful, so caching provides a speed-up.
+But during training, we don’t need that optimization — in fact, caching would force us to decode step-by-step, which would significantly slow things down and hurt GPU efficiency.
+
+Teacher Forcing:
+With teacher forcing, instead of feeding the model's own output back into the network, the correct output (from the training data) is used as the input for the subsequent time step. 

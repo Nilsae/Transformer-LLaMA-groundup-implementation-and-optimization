@@ -84,7 +84,7 @@ class FeedForward(nn.Module):
         hidden_dim = 4 * embed_dim # based on LLaMA-v1 paper
         self.MLP = nn.Sequential(
             nn.Linear(embed_dim, hidden_dim),
-            nn.SiLU() , # vs GELU or ReLU #TODOs
+            nn.SiLU() , 
             nn.Linear(hidden_dim, embed_dim),
         )
     def forward(self,input):
