@@ -78,7 +78,7 @@ base_lr = 1e-4
 optimizer = torch.optim.AdamW(params, lr=base_lr, betas=(0.9, 0.95), weight_decay=0.1)
 # AdamW decouples weight decay from gradient updates → better generalization.
 writer = SummaryWriter(log_dir=log_writer_dir)
-# scaler = torch.amp.GradScaler(device)
+scaler = torch.amp.GradScaler(str(device))
 
 num_epochs = 11
 
@@ -108,15 +108,16 @@ for i in range(start_epoch, num_epochs):
         input_ids = batch["input_ids"].to(device)
         attention_mask = batch["attention_mask"].to(device)  
         target = input_ids[:, 1:].to(device)                # All but first token, All but last token
-        # with torch.amp.autocast(str(device)):
-        decoder_output, *_ = decoder(input_ids[:, :-1], padding_mask=attention_mask[:, :-1])
-        loss = loss_fn(decoder_output.reshape(-1, vocab_size), target.reshape(-1))
-        loss.backward()
-        # scaler.scale(loss).backward()
+        with torch.amp.autocast(str(device)):
+            decoder_output, *_ = decoder(input_ids[:, :-1], padding_mask=attention_mask[:, :-1])
+            loss = loss_fn(decoder_output.reshape(-1, vocab_size), target.reshape(-1))
+        # loss.backward()
+        scaler.scale(loss).backward()
+        scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(decoder.parameters(), max_norm=1.0)
-        optimizer.step()
-        # scaler.step(optimizer)
-        # scaler.update()
+        # optimizer.step()
+        scaler.step(optimizer)
+        scaler.update()
         scheduler.step() 
         writer.add_scalar("LR", scheduler.get_last_lr()[0], global_step)
         writer.add_scalar("Loss/train", loss.item(), global_step)
