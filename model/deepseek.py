@@ -3,6 +3,17 @@ import torch.nn as nn
 import math
 from model.positional_encoding import RotaryPositionalEmbedding
 from model.optimization_utils import LoRALinear
+
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)  # or DEBUG, WARNING, etc.
+handler = logging.StreamHandler()
+handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d] %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+
 # Multi Query Attention (MQA):
 
 # Each head still has its own Query projection (Q_h = W_q^h * X).
@@ -31,9 +42,11 @@ class MultiQueryAttention(nn.Module):
         self.num_heads = num_heads
         head_dim = embed_dim//num_heads 
         self.head_dim = head_dim
-        self.q_projection_layer = LoRALinear(embed_dim, use_lora=use_lora, r=r, alpha = alpha, bias=False) # nn.Linear(embed_dim, embed_dim) 
-        self.k_projection_layer = nn.Linear(embed_dim, embed_dim, bias=False) 
-        self.v_projection_layer = LoRALinear(embed_dim, use_lora=use_lora, r=r, alpha = alpha, bias=False) #nn.Linear(embed_dim, embed_dim) 
+        # self.q_projection_layer = LoRALinear(embed_dim, use_lora=use_lora, r=r, alpha = alpha, bias=False) # nn.Linear(embed_dim, embed_dim) 
+        self.q_projection_layer = nn.Linear(embed_dim, embed_dim, bias=False)  
+        self.k_projection_layer = nn.Linear(embed_dim, head_dim, bias=False) 
+        self.v_projection_layer = nn.Linear(embed_dim, head_dim, bias=False) 
+        # self.v_projection_layer = LoRALinear(embed_dim, use_lora=use_lora, r=r, alpha = alpha, bias=False) #nn.Linear(embed_dim, embed_dim) 
         self.RoPE  = RotaryPositionalEmbedding(seq_len, head_dim) # rope calcs the PEs per HEAD unlike SinPE
         self.final_projection_layer = nn.Linear(embed_dim, embed_dim, bias=False)
         self.embed_dim = embed_dim
@@ -54,9 +67,11 @@ class MultiQueryAttention(nn.Module):
         if causal_mask is None: 
             seq_len_q = scores.size(-2) # negative because num_heads might be or not be there
             seq_len_k = scores.size(-1)
+            
             causal_mask = torch.tril(torch.ones(seq_len_q, seq_len_k, device=q.device)).bool()
             causal_mask = causal_mask.unsqueeze(0).unsqueeze(0)  # shape (1, 1, seq_len_q, seq_len_k) 1 -> all the batches
         if padding_mask is not None:
+            padding_mask = padding_mask[:, None, None, :]
             combined_mask = causal_mask & padding_mask
             scaled_scores = scaled_scores.masked_fill(combined_mask == 0, -float('inf'))
         else:

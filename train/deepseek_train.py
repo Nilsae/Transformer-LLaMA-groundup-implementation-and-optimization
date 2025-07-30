@@ -48,23 +48,22 @@ class TokenizedDataset(Dataset):
         
     
     
-    
-    
-with open('data/generated_dataset_gpt2-medium.jsonl', 'r') as f:
-    data = [json.loads(line) for line in f]
-
 tokenizer = AutoTokenizer.from_pretrained('./.hf_models/gpt2-medium')
 tokenizer.pad_token = tokenizer.eos_token
-tokenized_data = []
-for d in data:
-    tokenizer_out = tokenizer(d["story"], return_tensors="pt", padding="max_length", max_length=16, truncation=True, return_attention_mask=True)
-    tokenized_d = {
-        "input_ids" : tokenizer_out["input_ids"],
-        "attention_mask" : tokenizer_out["attention_mask"]
-    }
-    tokenized_data.append(tokenized_d)
+    
+# with open('data/generated_dataset_gpt2-medium.jsonl', 'r') as f:
+#     data = [json.loads(line) for line in f]
+# tokenized_data = []
+# for d in data:
+#     tokenizer_out = tokenizer(d["story"], return_tensors="pt", padding="max_length", max_length=16, truncation=True, return_attention_mask=True)
+#     tokenized_d = {
+#         "input_ids" : tokenizer_out["input_ids"],
+#         "attention_mask" : tokenizer_out["attention_mask"]
+#     }
+#     tokenized_data.append(tokenized_d)
 
-torch.save(tokenized_data, "tokenized_data.pt")
+# torch.save(tokenized_data, "tokenized_data.pt")
+tokenized_data = torch.load("tokenized_data.pt")
 train_loader = DataLoader(TokenizedDataset(tokenized_data), batch_size = 16, shuffle=True)
 vocab_size = tokenizer.vocab_size
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -79,7 +78,7 @@ base_lr = 1e-4
 optimizer = torch.optim.AdamW(params, lr=base_lr, betas=(0.9, 0.95), weight_decay=0.1)
 # AdamW decouples weight decay from gradient updates → better generalization.
 writer = SummaryWriter(log_dir=log_writer_dir)
-scaler = torch.amp.GradScaler(device)
+# scaler = torch.amp.GradScaler(device)
 
 num_epochs = 11
 
@@ -101,6 +100,7 @@ if resume_from_checkpoint:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         start_epoch = checkpoint["epoch"]
         print(f"Resumed from epoch {start_epoch}")
+
 for i in range(start_epoch, num_epochs):
     decoder.train()
     for batch in train_loader:
@@ -108,15 +108,15 @@ for i in range(start_epoch, num_epochs):
         input_ids = batch["input_ids"].to(device)
         attention_mask = batch["attention_mask"].to(device)  
         target = input_ids[:, 1:].to(device)                # All but first token, All but last token
-        with torch.amp.autocast(device):
-            decoder_output, *_ = decoder(input_ids[:, :-1], padding_mask=attention_mask[:, :-1])
-            loss = loss_fn(decoder_output.reshape(-1, vocab_size), target.reshape(-1))
-        # loss.backward()
-        scaler.scale(loss).backward()
+        # with torch.amp.autocast(str(device)):
+        decoder_output, *_ = decoder(input_ids[:, :-1], padding_mask=attention_mask[:, :-1])
+        loss = loss_fn(decoder_output.reshape(-1, vocab_size), target.reshape(-1))
+        loss.backward()
+        # scaler.scale(loss).backward()
         torch.nn.utils.clip_grad_norm_(decoder.parameters(), max_norm=1.0)
-        # optimizer.step()
-        scaler.step(optimizer)
-        scaler.update()
+        optimizer.step()
+        # scaler.step(optimizer)
+        # scaler.update()
         scheduler.step() 
         writer.add_scalar("LR", scheduler.get_last_lr()[0], global_step)
         writer.add_scalar("Loss/train", loss.item(), global_step)
