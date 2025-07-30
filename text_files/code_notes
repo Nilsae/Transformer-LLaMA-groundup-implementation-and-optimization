@@ -1,0 +1,28 @@
+## PreNorm vs PostNorm
+
+PreNorm:
+  + LayerNorm is applied *before* the sublayer (attention or FFN)
+  + out = x + sublayer(LayerNorm(x))
+  + Pros:
+       Better gradient flow (residual path bypasses normalization)
+       More stable for deep or large models
+       Common in modern LLMs (GPT-3, LLaMA, PaLM, Chinchilla)
+  + Often does NOT require a final LayerNorm after the last block
+  + More stable under FP16 training
+  + Requires less aggressive loss scaling
+  + Prevents early NaNs or divergence
+
+
+PostNorm:
+  - LayerNorm is applied *after* the sublayer and residual
+  - out = LayerNorm(x + sublayer(x))
+  - Pros:
+       Output is always normalized (e.g., for classification or logits)
+       Simpler in early transformer designs (BERT, GPT-2, original Transformer)
+  - Cons:
+       Can lead to unstable training in deep networks
+       Often needs careful initialization or learning rate warmup
+
+Summary:
+  - Use PreNorm for deep or scalable LLMs
+  - Use PostNorm for smaller models or when normalized output is required

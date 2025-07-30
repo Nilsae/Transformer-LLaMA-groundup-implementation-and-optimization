@@ -136,6 +136,33 @@ class CrossAttention(nn.Module):
         attn_out = self.final_projection_layer(attn_out)
         return attn_out, k, v #This is post-norm, used in older models. Most modern architectures like GPT-2/3 use pre-norm: x_norm = self.layer_norm(input)
     
+#  PreNorm vs PostNorm
+#
+# PreNorm:
+#   - LayerNorm is applied *before* the sublayer (attention or FFN)
+#   - out = x + sublayer(LayerNorm(x))
+#   - Pros:
+#       ✓ Better gradient flow (residual path bypasses normalization)
+#       ✓ More stable for deep or large models
+#       ✓ Common in modern LLMs (GPT-3, LLaMA, PaLM, Chinchilla)
+#   - Often does NOT require a final LayerNorm after the last block
+#
+# PostNorm:
+#   - LayerNorm is applied *after* the sublayer and residual
+#   - out = LayerNorm(x + sublayer(x))
+#   - Pros:
+#       ✓ Output is always normalized (e.g., for classification or logits)
+#       ✓ Simpler in early transformer designs (BERT, GPT-2, original Transformer)
+#   - Cons:
+#       ✗ Can lead to unstable training in deep networks
+#       ✗ Often needs careful initialization or learning rate warmup
+#
+# Summary:
+#   - Use PreNorm for deep or scalable LLMs
+#   - Use PostNorm for smaller models or when normalized output is required
+
+    
+    
 # This FFN is position-wise, which means
 # the same FFN is applied to each token (aka position) independently
 # not mixing the tokens unlike attention

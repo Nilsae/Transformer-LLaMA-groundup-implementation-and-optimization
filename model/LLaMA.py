@@ -95,7 +95,7 @@ class TransformerBlock(nn.Module):
     def __init__(self, embed_dim = 64, num_heads = 2, seq_len = 16, use_lora=False, r=8, alpha = 16):
         super().__init__()
         self.self_attention_layer = MultiHeadSelfAttention(embed_dim, num_heads, seq_len, use_lora=use_lora, r=r, alpha = alpha)
-        self.rms_norm1 = nn.RMSNorm(embed_dim) # RMS norm vs Layernorm: RMSNorm only scales, doesn't shift #TODO
+        self.rms_norm1 = nn.RMSNorm(embed_dim) # RMS norm vs Layernorm: RMSNorm only scales, doesn't shift
         self.rms_norm2 = nn.RMSNorm(embed_dim)
         #  LLaMA-v1 uses no dropouts at all
         self.FFN = FeedForward(embed_dim)
@@ -140,3 +140,19 @@ class TransformerDecoder(nn.Module):
 #     def forward(self, x):
 #         norm = x.norm(2, dim=-1, keepdim=True)
 #         return x / (norm + self.eps) * self.weight
+
+# LayerNorm vs RMSNorm: 
+# LayerNorm:
+# - Normalizes across features by subtracting mean and dividing by std dev
+# - Formula: x_hat = (x - mean) / sqrt(var + eps)
+# - Includes learnable affine params: gamma (scale), beta (shift)
+# - Common in transformers (e.g., BERT, GPT)
+# - Improves training stability but is more compute-intensive
+
+# RMSNorm:
+# - Normalizes using only the root mean square (no centering)
+# - Formula: x_hat = x / sqrt(mean(x^2) + eps)
+# - Includes only learnable gamma (scale), optionally beta
+# - Faster and simpler than LayerNorm
+# - Used in efficient LLMs (e.g., LLaMA, GPT-NeoX)
+# - Retains performance while reducing computational cost
