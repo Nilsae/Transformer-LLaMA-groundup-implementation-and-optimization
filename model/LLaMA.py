@@ -115,7 +115,7 @@ class TransformerDecoder(nn.Module):
         self.num_layers = num_layers
         self.decoder_stack = nn.ModuleList([TransformerBlock(embed_dim, num_heads, seq_len, use_lora, r, alpha) for i in range(num_layers)])
         self.output_projection = nn.Linear(embed_dim, vocab_size)
-        self.output_projection.weight = self.embedding_layer.weight #why does LLaMA tie weights? #TODO
+        self.output_projection.weight = self.embedding_layer.weight 
     def forward(self,x, inference = False):
         x = self.embedding_layer(x)
         batch_size = x.size(0)

@@ -26,3 +26,5 @@ PostNorm:
 Summary:
   - Use PreNorm for deep or scalable LLMs
   - Use PostNorm for smaller models or when normalized output is required
+
+  

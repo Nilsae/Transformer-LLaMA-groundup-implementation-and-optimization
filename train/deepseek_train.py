@@ -1,12 +1,13 @@
 import torch
-import json, os, sys
+import json, os, sys, math
 import torch.nn as nn
 import torch.optim as optim
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from model.LLaMA import TransformerDecoder
+from model.deepseek import TransformerDecoder
 from transformers import AutoTokenizer
 from torch.utils.data import  Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from torch.optim.lr_scheduler import LambdaLR
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)  # or DEBUG, WARNING, etc.
@@ -15,9 +16,21 @@ handler.setLevel(logging.DEBUG)
 formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d] %(message)s')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
-checkpoint_dir = "checkpoints/LLaMA-v1"
-log_writer_dir = "runs/LLaMA-v1/training"
+checkpoint_dir = "checkpoints/DeepSeek-v1"
+log_writer_dir = "runs/DeepSeek-v1/training"
 os.makedirs(checkpoint_dir, exist_ok=True)
+
+
+
+
+def lr_schedule(step, total_steps):  # Prevents divergence in early steps; allows optimizer to “ramp up.” 
+    warmup_steps = int(0.05 * total_steps) 
+    if step < warmup_steps:
+        return step / warmup_steps
+    progress = (step - warmup_steps) / (total_steps - warmup_steps)
+    return 0.5 * (1 + math.cos(math.pi * progress))
+
+
 class TokenizedDataset(Dataset):
     def __init__(self, samples):
         self.data = samples
@@ -61,10 +74,20 @@ loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
 
 
 params =list(decoder.parameters())
-optimizer = optim.Adam(params, betas=(0.9, 0.98), eps=1e-9)
+# optimizer = optim.Adam(params, betas=(0.9, 0.98), eps=1e-9)
+base_lr = 1e-4
+optimizer = torch.optim.AdamW(params, lr=base_lr, betas=(0.9, 0.95), weight_decay=0.1)
+# AdamW decouples weight decay from gradient updates → better generalization.
 writer = SummaryWriter(log_dir=log_writer_dir)
+scaler = torch.amp.GradScaler(device)
 
 num_epochs = 11
+
+num_samples = len(tokenized_data)
+batch_size = 16
+total_steps  = math.ceil(num_samples / batch_size) * num_epochs
+scheduler = LambdaLR(optimizer, lr_lambda=lambda step: lr_schedule(step, total_steps))
+
 global_step = 0
 resume_from_checkpoint = True  
 start_epoch = 0
@@ -85,11 +108,17 @@ for i in range(start_epoch, num_epochs):
         input_ids = batch["input_ids"].to(device)
         attention_mask = batch["attention_mask"].to(device)  
         target = input_ids[:, 1:].to(device)                # All but first token, All but last token
-        decoder_output, *_ = decoder(input_ids[:, :-1])
-        loss = loss_fn(decoder_output.reshape(-1, vocab_size), target.reshape(-1))
-        loss.backward()
+        with torch.amp.autocast(device):
+            decoder_output, *_ = decoder(input_ids[:, :-1], padding_mask=attention_mask[:, :-1])
+            loss = loss_fn(decoder_output.reshape(-1, vocab_size), target.reshape(-1))
+        # loss.backward()
+        scaler.scale(loss).backward()
         torch.nn.utils.clip_grad_norm_(decoder.parameters(), max_norm=1.0)
-        optimizer.step()
+        # optimizer.step()
+        scaler.step(optimizer)
+        scaler.update()
+        scheduler.step() 
+        writer.add_scalar("LR", scheduler.get_last_lr()[0], global_step)
         writer.add_scalar("Loss/train", loss.item(), global_step)
         global_step += 1
         
@@ -101,9 +130,7 @@ for i in range(start_epoch, num_epochs):
     }
     torch.save(checkpoint, os.path.join(checkpoint_dir, f"checkpoint_epoch_{i+1}.pt"))
         
-# num_samples = len(tokenized_data)
-# batch_size = 16
-# total steps  = ceil(num_samples / batch_size) * num_epochs
+
 torch.save(decoder.state_dict(), "decoder.pt")
 
 writer.close()
